@@ -294,7 +294,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ===========================================================================
-# Credenziali da st.secrets o variabili d'ambiente
+# Helpers
 # ===========================================================================
 
 def _get_secret(key: str, default: str = "") -> str:
@@ -304,6 +304,47 @@ def _get_secret(key: str, default: str = "") -> str:
     except (KeyError, FileNotFoundError):
         return os.environ.get(key, default)
 
+# ===========================================================================
+# Login gate
+# ===========================================================================
+if "authenticated" not in st.session_state:
+    st.session_state.authenticated = False
+
+if not st.session_state.authenticated:
+    _col_l, _col_c, _col_r = st.columns([1, 2, 1])
+    with _col_c:
+        st.markdown("""
+        <div style="text-align:center; margin-top:4rem; margin-bottom:1.5rem;">
+            <span style="font-size:3rem;">🔒</span>
+            <h2 style="font-family:'Jost',sans-serif; color:#272727; margin-top:0.5rem;">
+                DDT Fornitore &rarr; Mexal
+            </h2>
+            <p style="color:#A69D98; font-family:'Rubik',sans-serif;">
+                Inserisci la password per accedere
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+
+        with st.form("login_form"):
+            pwd_input = st.text_input("Password", type="password", label_visibility="collapsed",
+                                      placeholder="Password")
+            submitted = st.form_submit_button("Accedi", type="primary", use_container_width=True)
+
+        if submitted:
+            app_password = _get_secret("APP_PASSWORD")
+            if not app_password:
+                st.error("APP_PASSWORD non configurata nei Secrets.")
+            elif pwd_input == app_password:
+                st.session_state.authenticated = True
+                st.rerun()
+            else:
+                st.error("Password errata.")
+
+    st.stop()
+
+# ===========================================================================
+# Credenziali da st.secrets o variabili d'ambiente
+# ===========================================================================
 claude_key = _get_secret("ANTHROPIC_API_KEY")
 mexal_url = _get_secret("MEXAL_BASE_URL", "https://services.passepartout.cloud/webapi")
 webapi_user = _get_secret("MEXAL_WEBAPI_USER", "WEBAPI_ODOO")
