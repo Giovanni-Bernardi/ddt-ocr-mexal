@@ -304,6 +304,48 @@ def _get_secret(key: str, default: str = "") -> str:
     except (KeyError, FileNotFoundError):
         return os.environ.get(key, default)
 
+# Carica loghi per il brand header
+_ASSETS_DIR = Path(__file__).parent / "assets"
+
+def _load_sofable_svg() -> str:
+    svg_path = _ASSETS_DIR / "sofable_monogram.svg"
+    if svg_path.exists():
+        return svg_path.read_text(encoding="utf-8")
+    return ""
+
+def _load_mexal_b64() -> str:
+    jpg_path = _ASSETS_DIR / "mexal_logo.jpg"
+    if jpg_path.exists():
+        return base64.b64encode(jpg_path.read_bytes()).decode()
+    return ""
+
+_sofable_svg = _load_sofable_svg()
+_mexal_b64 = _load_mexal_b64()
+
+def _render_brand_header(subtitle: str = ""):
+    """Renderizza il brand header con loghi Sofable → Mexal."""
+    sub_html = f'<p>{subtitle}</p>' if subtitle else ""
+    st.markdown(f"""
+    <div class="brand-header">
+        <div class="brand-logos">
+            <div class="brand-logo sofable-logo">{_sofable_svg}</div>
+            <div class="brand-arrow">
+                <svg width="48" height="24" viewBox="0 0 48 24" fill="none">
+                    <path d="M0 12h40m0 0l-8-8m8 8l-8 8" stroke="white" stroke-width="2.5"
+                          stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+            </div>
+            <div class="brand-logo mexal-logo">
+                <img src="data:image/jpeg;base64,{_mexal_b64}" alt="Mexal"/>
+            </div>
+        </div>
+        <div class="brand-text">
+            <h1>DDT Fornitore &rarr; Mexal</h1>
+            {sub_html}
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
+
 # ===========================================================================
 # Login gate
 # ===========================================================================
@@ -313,17 +355,7 @@ if "authenticated" not in st.session_state:
 if not st.session_state.authenticated:
     _col_l, _col_c, _col_r = st.columns([1, 2, 1])
     with _col_c:
-        st.markdown("""
-        <div style="text-align:center; margin-top:4rem; margin-bottom:1.5rem;">
-            <span style="font-size:3rem;">🔒</span>
-            <h2 style="font-family:'Jost',sans-serif; color:#272727; margin-top:0.5rem;">
-                DDT Fornitore &rarr; Mexal
-            </h2>
-            <p style="color:#A69D98; font-family:'Rubik',sans-serif;">
-                Inserisci la password per accedere
-            </p>
-        </div>
-        """, unsafe_allow_html=True)
+        _render_brand_header("Inserisci la password per accedere")
 
         with st.form("login_form"):
             pwd_input = st.text_input("Password", type="password", label_visibility="collapsed",
@@ -690,45 +722,7 @@ def crea_bf_mexal(payload: dict) -> dict:
 # Interfaccia principale
 # ===========================================================================
 
-# Carica loghi per il brand header
-_ASSETS_DIR = Path(__file__).parent / "assets"
-
-def _load_sofable_svg() -> str:
-    svg_path = _ASSETS_DIR / "sofable_monogram.svg"
-    if svg_path.exists():
-        return svg_path.read_text(encoding="utf-8")
-    return ""
-
-def _load_mexal_b64() -> str:
-    jpg_path = _ASSETS_DIR / "mexal_logo.jpg"
-    if jpg_path.exists():
-        return base64.b64encode(jpg_path.read_bytes()).decode()
-    return ""
-
-_sofable_svg = _load_sofable_svg()
-_mexal_b64 = _load_mexal_b64()
-
-# Brand header con loghi: Sofable → Mexal
-st.markdown(f"""
-<div class="brand-header">
-    <div class="brand-logos">
-        <div class="brand-logo sofable-logo">{_sofable_svg}</div>
-        <div class="brand-arrow">
-            <svg width="48" height="24" viewBox="0 0 48 24" fill="none">
-                <path d="M0 12h40m0 0l-8-8m8 8l-8 8" stroke="white" stroke-width="2.5"
-                      stroke-linecap="round" stroke-linejoin="round"/>
-            </svg>
-        </div>
-        <div class="brand-logo mexal-logo">
-            <img src="data:image/jpeg;base64,{_mexal_b64}" alt="Mexal"/>
-        </div>
-    </div>
-    <div class="brand-text">
-        <h1>DDT Fornitore &rarr; Mexal</h1>
-        <p>Carica un DDT, verifica i dati estratti con OCR, crea la Bolla Fornitore in Mexal</p>
-    </div>
-</div>
-""", unsafe_allow_html=True)
+_render_brand_header("Carica un DDT, verifica i dati estratti con OCR, crea la Bolla Fornitore in Mexal")
 
 # ---------------------------------------------------------------------------
 # Step 1: Upload
