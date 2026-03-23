@@ -294,6 +294,27 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # ===========================================================================
+# Credenziali da st.secrets o variabili d'ambiente
+# ===========================================================================
+
+def _get_secret(key: str, default: str = "") -> str:
+    """Legge un segreto da st.secrets (Streamlit Cloud) o os.environ."""
+    try:
+        return st.secrets[key]
+    except (KeyError, FileNotFoundError):
+        return os.environ.get(key, default)
+
+claude_key = _get_secret("ANTHROPIC_API_KEY")
+mexal_url = _get_secret("MEXAL_BASE_URL", "https://services.passepartout.cloud/webapi")
+webapi_user = _get_secret("MEXAL_WEBAPI_USER", "WEBAPI_ODOO")
+webapi_pwd = _get_secret("MEXAL_WEBAPI_PASSWORD")
+admin_user = _get_secret("MEXAL_ADMIN_USER", "admin")
+admin_pwd = _get_secret("MEXAL_ADMIN_PASSWORD")
+dominio = _get_secret("MEXAL_DOMINIO", "mantellassi")
+azienda = _get_secret("MEXAL_AZIENDA", "SUT")
+anno = _get_secret("MEXAL_ANNO", "2026")
+
+# ===========================================================================
 # Stato sessione
 # ===========================================================================
 if "ddt_data" not in st.session_state:
@@ -306,45 +327,33 @@ if "storico" not in st.session_state:
     st.session_state.storico = []
 
 # ===========================================================================
-# Sidebar — Configurazione
+# Sidebar — Stato connessione
 # ===========================================================================
 with st.sidebar:
-    st.markdown("### Configurazione")
+    st.markdown("### Stato connessione")
 
-    st.subheader("Claude API")
-    claude_key = st.text_input(
-        "API Key Claude",
-        value=os.environ.get("ANTHROPIC_API_KEY", ""),
-        type="password",
-        help="Chiave API Anthropic per OCR",
+    # Riepilogo credenziali configurate
+    _claude_ok = bool(claude_key)
+    _mexal_ok = all([webapi_user, webapi_pwd, admin_user, admin_pwd])
+
+    st.markdown(
+        f"{'🟢' if _claude_ok else '🔴'} **Claude API** — "
+        f"{'configurata' if _claude_ok else 'mancante'}"
     )
-
-    st.subheader("Mexal WebAPI")
-    mexal_url = st.text_input(
-        "URL Base",
-        value=os.environ.get("MEXAL_BASE_URL", "https://services.passepartout.cloud/webapi"),
+    st.markdown(
+        f"{'🟢' if _mexal_ok else '🔴'} **Mexal WebAPI** — "
+        f"{'configurata' if _mexal_ok else 'credenziali mancanti'}"
     )
-    col1, col2 = st.columns(2)
-    with col1:
-        webapi_user = st.text_input("Utente WebAPI", value=os.environ.get("MEXAL_WEBAPI_USER", "WEBAPI_ODOO"))
-        admin_user = st.text_input("Utente Gestionale", value=os.environ.get("MEXAL_ADMIN_USER", "admin"))
-    with col2:
-        webapi_pwd = st.text_input("Password WebAPI", value=os.environ.get("MEXAL_WEBAPI_PASSWORD", ""), type="password")
-        admin_pwd = st.text_input("Password Gestionale", value=os.environ.get("MEXAL_ADMIN_PASSWORD", ""), type="password")
+    st.caption(f"Azienda: **{azienda}** | Anno: **{anno}** | Dominio: **{dominio}**")
 
-    dominio = st.text_input("Dominio", value=os.environ.get("MEXAL_DOMINIO", "mantellassi"))
-
-    col1, col2 = st.columns(2)
-    with col1:
-        azienda = st.text_input("Azienda", value=os.environ.get("MEXAL_AZIENDA", "SUT"))
-    with col2:
-        anno = st.text_input("Anno", value=os.environ.get("MEXAL_ANNO", "2026"))
+    st.divider()
 
     # Test connessione
     if st.button("🔌 Test Connessione Mexal"):
-        if all([webapi_user, webapi_pwd, admin_user, admin_pwd]):
+        if not _mexal_ok:
+            st.error("Credenziali Mexal non configurate. Imposta i Secrets o le variabili d'ambiente.")
+        else:
             try:
-                import requests
                 token1 = base64.b64encode(f"{webapi_user}:{webapi_pwd}".encode()).decode()
                 token2 = base64.b64encode(f"{admin_user}:{admin_pwd}".encode()).decode()
                 headers = {
@@ -361,8 +370,11 @@ with st.sidebar:
                     st.error(f"❌ HTTP {resp.status_code}: {resp.text[:200]}")
             except Exception as e:
                 st.error(f"❌ {e}")
-        else:
-            st.warning("Compila tutte le credenziali")
+
+    st.divider()
+    st.caption("Le credenziali si configurano nei [Secrets di Streamlit]"
+               "(https://docs.streamlit.io/deploy/streamlit-community-cloud/deploy-your-app/secrets-management) "
+               "o come variabili d'ambiente.")
 
 
 # ===========================================================================
