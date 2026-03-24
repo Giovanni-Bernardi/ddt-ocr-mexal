@@ -716,14 +716,15 @@ def search_fornitore_by_nome(testo: str) -> list[dict]:
     return []
 
 
-def search_articolo_by_descrizione(testo: str) -> list[dict]:
-    """Cerca articoli in Mexal per descrizione (contiene)."""
+def search_articoli_mexal(testo: str, campo: str = "descrizione", max_results: int = 20) -> list[dict]:
+    """Cerca articoli in Mexal per codice o descrizione (contiene, case insensitive)."""
     session = _mexal_session()
     resp = session.post(
         f"{mexal_url}/risorse/articoli/ricerca",
         headers=get_mexal_headers(),
+        params={"max": max_results},
         json={"filtri": [{
-            "campo": "descrizione",
+            "campo": campo,
             "condizione": "contiene",
             "case_insensitive": True,
             "valore": testo.strip(),
@@ -733,22 +734,6 @@ def search_articolo_by_descrizione(testo: str) -> list[dict]:
     if resp.status_code == 200:
         return resp.json().get("dati", [])
     return []
-
-
-def search_articolo_by_codice(codice: str) -> Optional[dict]:
-    """Cerca articolo in Mexal per codice esatto."""
-    session = _mexal_session()
-    try:
-        resp = session.get(
-            f"{mexal_url}/risorse/articoli/{codice}",
-            headers=get_mexal_headers(),
-            timeout=15,
-        )
-        if resp.status_code == 200:
-            return resp.json()
-    except Exception:
-        pass
-    return None
 
 
 def crea_bf_mexal(payload: dict) -> dict:
@@ -943,36 +928,49 @@ if st.session_state.ddt_data:
         with st.expander(f"Riga {i+1}: {riga.get('descrizione', '?')}", expanded=True):
             col1, col2, col3, col4 = st.columns([2, 4, 1, 1])
             with col1:
-                cod_art = st.text_input("Codice articolo", value=riga.get("codice_articolo") or "", key=f"art_{i}")
+                cod_art_default = st.session_state.get(f"art_codice_sel_{i}", riga.get("codice_articolo") or "")
+                cod_art = st.text_input("Codice articolo", value=cod_art_default, key=f"art_{i}")
             with col2:
-                desc = st.text_input("Descrizione", value=riga.get("descrizione", ""), key=f"desc_{i}")
+                desc_default = st.session_state.get(f"art_desc_sel_{i}", riga.get("descrizione", ""))
+                desc = st.text_input("Descrizione", value=desc_default, key=f"desc_{i}")
             with col3:
                 qty = st.number_input("Quantità", value=float(riga.get("quantita", 0)), key=f"qty_{i}", min_value=0.0, step=0.1)
             with col4:
                 iva = st.text_input("IVA", value=riga.get("aliquota_iva") or "22", key=f"iva_{i}")
 
             # Lookup articolo in Mexal
+            art_mode = st.radio(
+                "Cerca per",
+                ["Descrizione", "Codice"],
+                horizontal=True,
+                key=f"art_mode_{i}",
+            )
             art_search_col1, art_search_col2 = st.columns([3, 1])
             with art_search_col1:
+                placeholder = "Es: MASTICE, TESSUTO..." if art_mode == "Descrizione" else "Es: 26MST, TTEFL..."
                 art_search_text = st.text_input(
-                    "Cerca articolo per descrizione",
-                    value=desc[:40] if desc else "",
+                    f"Cerca per {art_mode.lower()}",
+                    value="",
                     key=f"art_search_{i}",
-                    placeholder="Es: MASTICE, TESSUTO, IMBOTTITURA...",
+                    placeholder=placeholder,
                 )
             with art_search_col2:
                 st.markdown("<br>", unsafe_allow_html=True)
-                art_search_btn = st.button("🔍 Cerca articolo", key=f"btn_art_search_{i}")
+                art_search_btn = st.button("🔍 Cerca", key=f"btn_art_search_{i}")
 
             if art_search_btn and art_search_text:
+                campo = "codice" if art_mode == "Codice" else "descrizione"
                 with st.spinner("Ricerca articolo in Mexal..."):
-                    art_risultati = search_articolo_by_descrizione(art_search_text)
+                    art_risultati = search_articoli_mexal(art_search_text, campo=campo)
                     st.session_state[f"art_risultati_{i}"] = art_risultati
 
             art_key = f"art_risultati_{i}"
             if st.session_state.get(art_key):
                 art_list = st.session_state[art_key]
-                art_options = [f"{a.get('codice', '?')} — {a.get('descrizione', '?')}" for a in art_list]
+                art_options = [
+                    f"{a.get('codice', '?')} — {a.get('descrizione', '?')} ({a.get('um_principale', '')})"
+                    for a in art_list
+                ]
                 art_sel_idx = st.selectbox(
                     f"Articoli trovati ({len(art_options)})",
                     range(len(art_options)),
@@ -981,17 +979,24 @@ if st.session_state.ddt_data:
                 )
                 if art_sel_idx is not None:
                     selected_art = art_list[art_sel_idx]
-                    st.session_state[f"art_codice_sel_{i}"] = selected_art.get("codice", "")
-                    st.success(f"✅ **{selected_art.get('codice')}** — {selected_art.get('descrizione', '?')}")
+                    sel_codice = selected_art.get("codice", "")
+                    sel_desc = selected_art.get("descr_completa") or selected_art.get("descrizione", "")
+                    st.session_state[f"art_codice_sel_{i}"] = sel_codice
+                    st.session_state[f"art_desc_sel_{i}"] = sel_desc
+                    st.success(
+                        f"✅ **{sel_codice}** — {sel_desc} "
+                        f"(UM: {selected_art.get('um_principale', '?')})"
+                    )
             elif st.session_state.get(art_key) is not None:
                 st.warning("⚠️ Nessun articolo trovato in Mexal")
 
-            # Usa il codice selezionato dalla ricerca se disponibile
-            final_cod_art = st.session_state.get(f"art_codice_sel_{i}", cod_art) or cod_art
+            # Usa codice/descrizione dalla selezione se presenti, altrimenti dal campo
+            final_cod_art = st.session_state.get(f"art_codice_sel_{i}") or cod_art
+            final_desc = st.session_state.get(f"art_desc_sel_{i}") or desc
 
             edited_righe.append({
                 "codice_articolo": final_cod_art or None,
-                "descrizione": desc,
+                "descrizione": final_desc,
                 "quantita": qty,
                 "aliquota_iva": iva,
             })
