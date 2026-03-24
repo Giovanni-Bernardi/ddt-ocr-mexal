@@ -666,7 +666,7 @@ def _mexal_session() -> requests.Session:
     return session
 
 
-def search_fornitore_mexal(partita_iva: str) -> Optional[dict]:
+def search_fornitore_by_piva(partita_iva: str) -> Optional[dict]:
     """Cerca fornitore in Mexal per P.IVA."""
     piva = partita_iva.replace("IT", "").strip()
     session = _mexal_session()
@@ -683,8 +683,60 @@ def search_fornitore_mexal(partita_iva: str) -> Optional[dict]:
     return None
 
 
-def search_articolo_mexal(codice: str) -> Optional[dict]:
-    """Cerca articolo in Mexal per codice."""
+def list_fornitori_mexal(max_results: int = 50) -> list[dict]:
+    """Lista fornitori da Mexal."""
+    session = _mexal_session()
+    resp = session.get(
+        f"{mexal_url}/risorse/fornitori",
+        headers=get_mexal_headers(),
+        params={"max": max_results},
+        timeout=15,
+    )
+    if resp.status_code == 200:
+        return resp.json().get("dati", [])
+    return []
+
+
+def search_fornitore_by_nome(testo: str) -> list[dict]:
+    """Cerca fornitori in Mexal per ragione sociale (contiene)."""
+    session = _mexal_session()
+    resp = session.post(
+        f"{mexal_url}/risorse/fornitori/ricerca",
+        headers=get_mexal_headers(),
+        json={"filtri": [{
+            "campo": "ragione_sociale",
+            "condizione": "contiene",
+            "case_insensitive": True,
+            "valore": testo.strip(),
+        }]},
+        timeout=15,
+    )
+    if resp.status_code == 200:
+        return resp.json().get("dati", [])
+    return []
+
+
+def search_articolo_by_descrizione(testo: str) -> list[dict]:
+    """Cerca articoli in Mexal per descrizione (contiene)."""
+    session = _mexal_session()
+    resp = session.post(
+        f"{mexal_url}/risorse/articoli/ricerca",
+        headers=get_mexal_headers(),
+        json={"filtri": [{
+            "campo": "descrizione",
+            "condizione": "contiene",
+            "case_insensitive": True,
+            "valore": testo.strip(),
+        }]},
+        timeout=15,
+    )
+    if resp.status_code == 200:
+        return resp.json().get("dati", [])
+    return []
+
+
+def search_articolo_by_codice(codice: str) -> Optional[dict]:
+    """Cerca articolo in Mexal per codice esatto."""
     session = _mexal_session()
     try:
         resp = session.get(
@@ -816,23 +868,59 @@ if st.session_state.ddt_data:
             forn_nome = st.text_input("Ragione sociale", value=forn.get("ragione_sociale", ""), key="forn_nome")
             forn_piva = st.text_input("P.IVA", value=forn.get("partita_iva", ""), key="forn_piva")
 
-            # Lookup Mexal
-            if st.button("🔍 Cerca in Mexal", key="btn_search_forn"):
-                if forn_piva:
-                    with st.spinner("Ricerca fornitore..."):
-                        found = search_fornitore_mexal(forn_piva)
-                        if found:
-                            st.success(f"✅ Trovato: {found.get('ragione_sociale')} — Codice: **{found.get('codice')}**")
-                            st.session_state.cod_conto_trovato = found.get("codice")
-                        else:
-                            st.warning("⚠️ Fornitore non trovato in Mexal")
-
         with col2:
             st.markdown("**Documento**")
             num_ddt = st.text_input("Numero DDT", value=testata.get("numero_documento", ""), key="num_ddt")
             data_doc = st.text_input("Data (YYYYMMDD)", value=testata.get("data_documento", ""), key="data_doc")
             causale = st.text_input("Causale", value=testata.get("causale_trasporto", ""), key="causale")
             rif_ordine = st.text_input("Rif. ordine", value=testata.get("riferimento_ordine", "") or "", key="rif_ordine")
+
+        # --- Lookup fornitore in Mexal ---
+        st.markdown("**🔍 Cerca fornitore in Mexal**")
+        forn_search_col1, forn_search_col2 = st.columns([3, 1])
+        with forn_search_col1:
+            forn_search_text = st.text_input(
+                "Cerca per ragione sociale",
+                value=forn.get("ragione_sociale", ""),
+                key="forn_search_text",
+                placeholder="Es: CARRADORI, GIRASOLI...",
+            )
+        with forn_search_col2:
+            st.markdown("<br>", unsafe_allow_html=True)
+            forn_search_btn = st.button("🔍 Cerca fornitore", key="btn_search_forn")
+
+        # Cerca per P.IVA automaticamente, oppure per ragione sociale su click
+        if forn_search_btn or ("fornitori_risultati" not in st.session_state and forn_piva):
+            with st.spinner("Ricerca fornitore in Mexal..."):
+                risultati = []
+                # Prima cerca per P.IVA se presente
+                if forn_piva:
+                    found = search_fornitore_by_piva(forn_piva)
+                    if found:
+                        risultati = [found]
+                # Se non trovato per P.IVA, cerca per ragione sociale
+                if not risultati and forn_search_text:
+                    risultati = search_fornitore_by_nome(forn_search_text)
+                # Se ancora nulla, lista generale
+                if not risultati and forn_search_btn:
+                    risultati = list_fornitori_mexal(50)
+                st.session_state.fornitori_risultati = risultati
+
+        if st.session_state.get("fornitori_risultati"):
+            fornitori_list = st.session_state.fornitori_risultati
+            options = [f"{f.get('codice', '?')} — {f.get('ragione_sociale', '?')}" for f in fornitori_list]
+            selected_idx = st.selectbox(
+                f"Fornitori trovati ({len(options)})",
+                range(len(options)),
+                format_func=lambda i: options[i],
+                key="forn_select",
+            )
+            if selected_idx is not None:
+                selected_forn = fornitori_list[selected_idx]
+                st.session_state.cod_conto_trovato = selected_forn.get("codice")
+                st.success(f"✅ Selezionato: **{selected_forn.get('codice')}** — {selected_forn.get('ragione_sociale')}")
+        elif st.session_state.get("fornitori_risultati") is not None:
+            st.warning("⚠️ Nessun fornitore trovato in Mexal")
 
         # Codice conto Mexal
         cod_conto_default = (
@@ -844,7 +932,7 @@ if st.session_state.ddt_data:
             "🏷️ Codice conto Mexal (fornitore)",
             value=cod_conto_default,
             key="cod_conto",
-            help="Es: 601.00072 — cercalo con il bottone sopra se non lo conosci",
+            help="Es: 601.00072 — cercalo con la ricerca sopra se non lo conosci",
         )
 
     # --- Righe ---
@@ -863,17 +951,46 @@ if st.session_state.ddt_data:
             with col4:
                 iva = st.text_input("IVA", value=riga.get("aliquota_iva") or "22", key=f"iva_{i}")
 
-            # Verifica articolo in Mexal
-            if cod_art and st.button(f"🔍 Verifica articolo", key=f"btn_art_{i}"):
-                with st.spinner("Ricerca..."):
-                    art = search_articolo_mexal(cod_art)
-                    if art:
-                        st.success(f"✅ {art.get('descrizione', '?')} — UM: {art.get('um_principale', '?')}")
-                    else:
-                        st.warning("⚠️ Articolo non trovato in Mexal")
+            # Lookup articolo in Mexal
+            art_search_col1, art_search_col2 = st.columns([3, 1])
+            with art_search_col1:
+                art_search_text = st.text_input(
+                    "Cerca articolo per descrizione",
+                    value=desc[:40] if desc else "",
+                    key=f"art_search_{i}",
+                    placeholder="Es: MASTICE, TESSUTO, IMBOTTITURA...",
+                )
+            with art_search_col2:
+                st.markdown("<br>", unsafe_allow_html=True)
+                art_search_btn = st.button("🔍 Cerca articolo", key=f"btn_art_search_{i}")
+
+            if art_search_btn and art_search_text:
+                with st.spinner("Ricerca articolo in Mexal..."):
+                    art_risultati = search_articolo_by_descrizione(art_search_text)
+                    st.session_state[f"art_risultati_{i}"] = art_risultati
+
+            art_key = f"art_risultati_{i}"
+            if st.session_state.get(art_key):
+                art_list = st.session_state[art_key]
+                art_options = [f"{a.get('codice', '?')} — {a.get('descrizione', '?')}" for a in art_list]
+                art_sel_idx = st.selectbox(
+                    f"Articoli trovati ({len(art_options)})",
+                    range(len(art_options)),
+                    format_func=lambda idx, opts=art_options: opts[idx],
+                    key=f"art_select_{i}",
+                )
+                if art_sel_idx is not None:
+                    selected_art = art_list[art_sel_idx]
+                    st.session_state[f"art_codice_sel_{i}"] = selected_art.get("codice", "")
+                    st.success(f"✅ **{selected_art.get('codice')}** — {selected_art.get('descrizione', '?')}")
+            elif st.session_state.get(art_key) is not None:
+                st.warning("⚠️ Nessun articolo trovato in Mexal")
+
+            # Usa il codice selezionato dalla ricerca se disponibile
+            final_cod_art = st.session_state.get(f"art_codice_sel_{i}", cod_art) or cod_art
 
             edited_righe.append({
-                "codice_articolo": cod_art or None,
+                "codice_articolo": final_cod_art or None,
                 "descrizione": desc,
                 "quantita": qty,
                 "aliquota_iva": iva,
@@ -917,7 +1034,7 @@ if st.session_state.ddt_data:
             "data_documento": data_doc,
             "cod_conto": cod_conto,
             "id_magazzino": id_mag,
-            "id_riga": [[i+1, 1] for i in range(len(edited_righe))],
+            "id_riga": [[i+1, i+1] for i in range(len(edited_righe))],
             "tp_riga": [[i+1, "R"] for i in range(len(edited_righe))],
             "quantita": [[i+1, r["quantita"]] for i, r in enumerate(edited_righe)],
             "cod_iva": [[i+1, r["aliquota_iva"] or "22"] for i, r in enumerate(edited_righe)],
