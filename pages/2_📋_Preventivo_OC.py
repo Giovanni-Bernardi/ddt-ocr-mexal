@@ -271,10 +271,10 @@ if st.session_state.prev_data:
     # Codice cliente Mexal
     _cli_trovato = st.session_state.get("prev_cliente_trovato")
     if _cli_trovato:
-        st.session_state["prev_mmcli"] = _cli_trovato
-    elif "prev_mmcli" not in st.session_state:
-        st.session_state["prev_mmcli"] = ""
-    mmcli = st.text_input("🏷️ Codice cliente Mexal", key="prev_mmcli", help="Es: 501.00022")
+        st.session_state["prev_cod_conto"] = _cli_trovato
+    elif "prev_cod_conto" not in st.session_state:
+        st.session_state["prev_cod_conto"] = ""
+    cod_conto = st.text_input("🏷️ Codice cliente Mexal", key="prev_cod_conto", help="Es: 501.00022")
 
     # Righe articolo
     st.subheader("📦 Righe articolo")
@@ -304,10 +304,10 @@ if st.session_state.prev_data:
             # Lookup articolo Mexal
             _sel_art = st.session_state.get(f"prev_art_sel_{i}")
             if _sel_art:
-                st.session_state[f"prev_mmart_{i}"] = _sel_art
-            elif f"prev_mmart_{i}" not in st.session_state:
-                st.session_state[f"prev_mmart_{i}"] = ""
-            mmart = st.text_input("Codice articolo Mexal", key=f"prev_mmart_{i}",
+                st.session_state[f"prev_codart_{i}"] = _sel_art
+            elif f"prev_codart_{i}" not in st.session_state:
+                st.session_state[f"prev_codart_{i}"] = ""
+            codice_art = st.text_input("Codice articolo Mexal", key=f"prev_codart_{i}",
                                   placeholder="Cerca sotto o compila manualmente")
 
             art_search_col1, art_search_col2 = st.columns([3, 1])
@@ -333,9 +333,9 @@ if st.session_state.prev_data:
                     st.session_state[f"prev_art_sel_{i}"] = art_list[art_sel_idx].get("codice", "")
                     st.success(f"✅ **{art_list[art_sel_idx].get('codice')}**")
 
-            final_mmart = st.session_state.get(f"prev_art_sel_{i}") or mmart
+            final_codice_art = st.session_state.get(f"prev_art_sel_{i}") or codice_art
             edited_righe.append({
-                "mmart": final_mmart or None, "descrizione": desc, "quantita": qty,
+                "codice_articolo": final_codice_art or None, "descrizione": desc, "quantita": qty,
                 "prezzo": prezzo, "sconto": sconto, "aliquota_iva": iva, "importo": importo,
             })
 
@@ -345,7 +345,7 @@ if st.session_state.prev_data:
     st.markdown('<div class="step-header">3 — Crea OC in Mexal</div>', unsafe_allow_html=True)
 
     errors = []
-    if not mmcli:
+    if not cod_conto:
         errors.append("Codice cliente Mexal mancante")
     if not data_offerta:
         errors.append("Data offerta mancante")
@@ -361,21 +361,26 @@ if st.session_state.prev_data:
     with st.expander("👀 Anteprima payload JSON"):
         payload = {
             "sigla": "OC", "serie": 1, "numero": 0,
-            "mmdat": data_offerta, "mmcli": mmcli,
+            "data_documento": data_offerta, "cod_conto": cod_conto,
             "id_riga": [[i+1, i+1] for i in range(len(edited_righe))],
             "tp_riga": [[i+1, "R"] for i in range(len(edited_righe))],
-            "mmqta": [[i+1, r["quantita"]] for i, r in enumerate(edited_righe)],
-            "mmali": [[i+1, r["aliquota_iva"] or "22"] for i, r in enumerate(edited_righe)],
+            "quantita": [[i+1, r["quantita"]] for i, r in enumerate(edited_righe)],
+            "cod_iva": [[i+1, r["aliquota_iva"] or "22"] for i, r in enumerate(edited_righe)],
         }
-        codici = [[i+1, r["mmart"]] for i, r in enumerate(edited_righe) if r["mmart"]]
+        codici = [[i+1, r["codice_articolo"]] for i, r in enumerate(edited_righe) if r["codice_articolo"]]
         if codici:
-            payload["mmart"] = codici
+            payload["codice_articolo"] = codici
         prezzi = [[i+1, r["prezzo"]] for i, r in enumerate(edited_righe) if r["prezzo"]]
         if prezzi:
             payload["prezzo"] = prezzi
         sconti = [[i+1, str(r["sconto"])] for i, r in enumerate(edited_righe) if r["sconto"]]
         if sconti:
             payload["sconto"] = sconti
+        # descr_riga per righe senza codice articolo
+        descr_righe = [[i+1, r["descrizione"]] for i, r in enumerate(edited_righe)
+                       if not r["codice_articolo"] and r["descrizione"]]
+        if descr_righe:
+            payload["descr_riga"] = descr_righe
         st.json(payload)
 
     col1, col2 = st.columns([1, 4])
@@ -393,14 +398,14 @@ if st.session_state.prev_data:
                 <div class="success-box">
                     <h3>✅ OC creato con successo</h3>
                     <p>Preventivo: <b>{num_prev}</b> del {data_offerta}</p>
-                    <p>Cliente: {cli_nome} ({mmcli})</p>
+                    <p>Cliente: {cli_nome} ({cod_conto})</p>
                     <p>Location: {result.get('location', '-')}</p>
                 </div>
                 """, unsafe_allow_html=True)
                 st.session_state.prev_storico.append({
                     "timestamp": datetime.now().strftime("%H:%M:%S"),
                     "doc": f"OC da {num_prev}", "cliente": cli_nome,
-                    "cod_cliente": mmcli, "data": data_offerta,
+                    "cod_cliente": cod_conto, "data": data_offerta,
                     "righe": len(edited_righe), "stato": "✅",
                 })
             else:

@@ -72,42 +72,45 @@ Usare Claude API SOLO come fallback se pdfplumber non riesce a parsare.
 POST https://services.passepartout.cloud/webapi/risorse/documenti/ordini-clienti
 ```
 
-### ATTENZIONE: nomi campi diversi dai movimenti magazzino!
-L'API ordini-clienti usa nomi campi ABBREVIATI (stile legacy Mexal):
+### Nomi campi API OC su SUT — IDENTICI a movimenti magazzino
+Su azienda SUT i nomi campi per gli ordini-clienti sono gli stessi dei movimenti-magazzino:
 
-| Campo | Nome API OC | Nome API BF (per confronto) |
-|-------|------------|---------------------------|
-| Codice cliente | `mmcli` | `cod_conto` |
-| Data documento | `mmdat` | `data_documento` |
-| Codice articolo | `mmart` | `codice_articolo` |
-| Aliquota IVA | `mmali` | `cod_iva` |
-| Quantità | `mmqta` | `quantita` |
-| Sigla | `sigla` | `sigla` |
-| Serie | `serie` | `serie` |
-| Numero | `numero` | `numero` |
+| Campo | Nome API |
+|-------|----------|
+| Codice cliente | `cod_conto` |
+| Data documento | `data_documento` |
+| Codice articolo | `codice_articolo` |
+| Aliquota IVA | `cod_iva` |
+| Quantità | `quantita` |
+| Sigla | `sigla` |
+| Serie | `serie` |
+| Numero | `numero` |
 
 ### IMPORTANTE: `numero: 0` funziona per gli OC (numerazione automatica)
 A differenza delle BF dove il numero è obbligatorio, per gli OC si può usare `numero: 0` e Mexal assegna automaticamente il prossimo numero disponibile.
 
-### Payload esempio OC (dalla documentazione ufficiale Mexal):
+### Payload esempio OC (VERIFICATO su SUT):
 ```json
 {
   "sigla": "OC",
   "serie": 1,
   "numero": 0,
-  "mmdat": "20260302",
-  "mmcli": "501.00022",
+  "data_documento": "20260302",
+  "cod_conto": "501.00022",
   "id_riga": [[1, 1], [2, 2], [3, 3]],
   "tp_riga": [[1, "R"], [2, "R"], [3, "R"]],
-  "mmart": [[1, "CODICE_ART_1"], [2, "CODICE_ART_2"], [3, "CODICE_ART_3"]],
-  "mmqta": [[1, 1], [2, 2], [3, 1]],
-  "mmali": [[1, "22"], [2, "22"], [3, "22"]]
+  "codice_articolo": [[1, "ART001"], [2, "ART002"], [3, "ART003"]],
+  "quantita": [[1, 1], [2, 2], [3, 1]],
+  "prezzo": [[1, 6200.00], [2, 84.00], [3, 120.00]],
+  "sconto": [[1, "40"], [2, "40"], [3, "40"]],
+  "cod_iva": [[1, "22"], [2, "22"], [3, "22"]]
 }
 ```
 
 ### Campi aggiuntivi utili per l'OC:
 - `prezzo`: array [[indice, valore]] — prezzo unitario per riga
 - `sconto`: array [[indice, "40"]] — percentuale sconto per riga
+- `descr_riga`: array [[indice, "testo"]] — descrizione per righe senza codice articolo
 - `codice_agente`: stringa — codice agente (es: "601.00001")
 - `nota`: array di stringhe — note documento
 
