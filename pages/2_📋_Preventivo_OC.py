@@ -86,20 +86,19 @@ def parse_preventivo_pdf(pdf_bytes: bytes) -> dict:
     if m:
         testata["numero_preventivo"] = m.group(1)
 
-    # Data offerta: "Data offerta: 02/03/2026" (può essere su una riga con altri campi)
-    m = re.search(r'Data\s+offerta\s*[:\s]\s*(\d{2}/\d{2}/\d{4})', full_text)
+    # Data offerta: "Data offerta: 02/03/2026"
+    m = re.search(r'Data offerta[:\s]+(\d{2}/\d{2}/\d{4})', full_text)
     if m:
         testata["data_offerta"] = _parse_date_it(m.group(1))
 
-    # Scadenza
-    m = re.search(r'Scadenza\s*[:\s]\s*(\d{2}/\d{2}/\d{4})', full_text)
+    # Scadenza: "Scadenza: 26/03/2026"
+    m = re.search(r'Scadenza[:\s]+(\d{2}/\d{2}/\d{4})', full_text)
     if m:
         testata["data_scadenza"] = _parse_date_it(m.group(1))
 
-    # Addetto vendite: cattura solo "Nome Cognome" dopo "Addetto vendite:"
-    # Importante: non catturare tutto fino a fine riga perché la riga
-    # potrebbe contenere anche data, scadenza, ecc.
-    m = re.search(r'Addetto\s+vendite\s*[:\s]\s*([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)*)', full_text)
+    # Addetto vendite: "Addetto vendite: Eva Giusti"
+    # Cattura tutto fino a newline, "Data", o fine stringa
+    m = re.search(r'Addetto vendite[:\s]+(.+?)(?:\n|Data|$)', full_text)
     if m:
         testata["addetto_vendite"] = m.group(1).strip()
 
