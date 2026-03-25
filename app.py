@@ -930,15 +930,14 @@ if st.session_state.ddt_data:
         elif st.session_state.get("fornitori_risultati") is not None:
             st.warning("⚠️ Nessun fornitore trovato in Mexal")
 
-        # Codice conto Mexal
-        cod_conto_default = (
-            st.session_state.get("cod_conto_trovato")
-            or testata.get("codice_conto_mexal")
-            or ""
-        )
+        # Codice conto Mexal — auto-populate dal lookup prima del widget
+        _cod_trovato = st.session_state.get("cod_conto_trovato")
+        if _cod_trovato:
+            st.session_state["cod_conto"] = _cod_trovato
+        elif "cod_conto" not in st.session_state:
+            st.session_state["cod_conto"] = testata.get("codice_conto_mexal") or ""
         cod_conto = st.text_input(
             "🏷️ Codice conto Mexal (fornitore)",
-            value=cod_conto_default,
             key="cod_conto",
             help="Es: 601.00072 — cercalo con la ricerca sopra se non lo conosci",
         )
@@ -949,13 +948,23 @@ if st.session_state.ddt_data:
     edited_righe = []
     for i, riga in enumerate(righe):
         with st.expander(f"Riga {i+1}: {riga.get('descrizione', '?')}", expanded=True):
+            # Auto-populate codice/descrizione dal lookup prima dei widget
+            _sel_cod = st.session_state.get(f"art_codice_sel_{i}")
+            if _sel_cod:
+                st.session_state[f"art_{i}"] = _sel_cod
+            elif f"art_{i}" not in st.session_state:
+                st.session_state[f"art_{i}"] = riga.get("codice_articolo") or ""
+            _sel_desc = st.session_state.get(f"art_desc_sel_{i}")
+            if _sel_desc:
+                st.session_state[f"desc_{i}"] = _sel_desc
+            elif f"desc_{i}" not in st.session_state:
+                st.session_state[f"desc_{i}"] = riga.get("descrizione", "")
+
             col1, col2, col3, col4 = st.columns([2, 4, 1, 1])
             with col1:
-                cod_art_default = st.session_state.get(f"art_codice_sel_{i}", riga.get("codice_articolo") or "")
-                cod_art = st.text_input("Codice articolo", value=cod_art_default, key=f"art_{i}")
+                cod_art = st.text_input("Codice articolo", key=f"art_{i}")
             with col2:
-                desc_default = st.session_state.get(f"art_desc_sel_{i}", riga.get("descrizione", ""))
-                desc = st.text_input("Descrizione", value=desc_default, key=f"desc_{i}")
+                desc = st.text_input("Descrizione", key=f"desc_{i}")
             with col3:
                 qty = st.number_input("Quantità", value=float(riga.get("quantita", 0)), key=f"qty_{i}", min_value=0.0, step=0.1)
             with col4:
