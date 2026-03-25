@@ -697,11 +697,11 @@ def list_fornitori_mexal(max_results: int = 50) -> list[dict]:
     return []
 
 
-def search_fornitore_by_nome(testo: str) -> list[dict]:
+def search_fornitore_by_nome(testo: str, max_results: int = 50) -> list[dict]:
     """Cerca fornitori in Mexal per ragione sociale (contiene)."""
     session = _mexal_session()
     resp = session.post(
-        f"{mexal_url}/risorse/fornitori/ricerca",
+        f"{mexal_url}/risorse/fornitori/ricerca?max={max_results}",
         headers=get_mexal_headers(),
         json={"filtri": [{
             "campo": "ragione_sociale",
@@ -717,23 +717,41 @@ def search_fornitore_by_nome(testo: str) -> list[dict]:
 
 
 def search_articoli_mexal(testo: str, campo: str = "descrizione", max_results: int = 20) -> list[dict]:
-    """Cerca articoli in Mexal per codice o descrizione (contiene, case insensitive)."""
+    """Cerca articoli in Mexal per codice o descrizione (contiene, case insensitive).
+
+    Prova prima con il testo completo. Se non trova risultati e il testo ha
+    più parole, riprova con la prima parola (es. "TESSUTO" da
+    "TESSUTO PL/CO/AF ART.FSL-SOFABLE COL.110").
+    """
     session = _mexal_session()
-    resp = session.post(
-        f"{mexal_url}/risorse/articoli/ricerca",
-        headers=get_mexal_headers(),
-        params={"max": max_results},
-        json={"filtri": [{
-            "campo": campo,
-            "condizione": "contiene",
-            "case_insensitive": True,
-            "valore": testo.strip(),
-        }]},
-        timeout=15,
-    )
-    if resp.status_code == 200:
-        return resp.json().get("dati", [])
-    return []
+
+    def _do_search(query: str) -> list[dict]:
+        resp = session.post(
+            f"{mexal_url}/risorse/articoli/ricerca?max={max_results}",
+            headers=get_mexal_headers(),
+            json={"filtri": [{
+                "campo": campo,
+                "condizione": "contiene",
+                "case_insensitive": True,
+                "valore": query.strip(),
+            }]},
+            timeout=15,
+        )
+        if resp.status_code == 200:
+            return resp.json().get("dati", [])
+        return []
+
+    # Tentativo 1: testo completo
+    risultati = _do_search(testo)
+    if risultati:
+        return risultati
+
+    # Tentativo 2: solo la prima parola significativa (>= 3 caratteri)
+    parole = [p for p in testo.strip().split() if len(p) >= 3]
+    if parole and parole[0].strip() != testo.strip():
+        risultati = _do_search(parole[0])
+
+    return risultati
 
 
 def get_articolo_mexal(codice: str) -> Optional[dict]:
