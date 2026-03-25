@@ -736,6 +736,22 @@ def search_articoli_mexal(testo: str, campo: str = "descrizione", max_results: i
     return []
 
 
+def get_articolo_mexal(codice: str) -> Optional[dict]:
+    """Recupera un articolo per codice esatto: GET /risorse/articoli/CODICE."""
+    session = _mexal_session()
+    try:
+        resp = session.get(
+            f"{mexal_url}/risorse/articoli/{codice}",
+            headers=get_mexal_headers(),
+            timeout=15,
+        )
+        if resp.status_code == 200:
+            return resp.json()
+    except Exception:
+        pass
+    return None
+
+
 def crea_bf_mexal(payload: dict) -> dict:
     """Invia POST per creare BF in Mexal."""
     session = _mexal_session()
@@ -785,6 +801,17 @@ if uploaded and st.button("🔍 Avvia OCR", type="primary"):
                 st.session_state.ddt_data = result
                 st.session_state.ddt_image_b64 = img_b64
                 st.session_state.bf_result = None
+                # Reset lookup state per nuovo DDT
+                st.session_state.pop("fornitori_risultati", None)
+                st.session_state.pop("cod_conto_trovato", None)
+                # Auto-lookup fornitore per P.IVA
+                forn_piva_ocr = result.get("testata", {}).get("fornitore", {}).get("partita_iva", "")
+                if forn_piva_ocr:
+                    status_area.info("⏳ Ricerca fornitore in Mexal...")
+                    found = search_fornitore_by_piva(forn_piva_ocr)
+                    if found:
+                        st.session_state.cod_conto_trovato = found.get("codice")
+                        st.session_state.fornitori_risultati = [found]
                 status_area.empty()
                 st.success("✅ OCR completato!")
             except anthropic.APIStatusError as e:
@@ -809,7 +836,7 @@ if st.session_state.ddt_data:
     st.markdown('<div class="step-header">2 — Verifica dati estratti</div>', unsafe_allow_html=True)
 
     # Metadati OCR
-    col1, col2, col3, col4 = st.columns(4)
+    col1, col2, col3 = st.columns(3)
     with col1:
         qualita = meta.get("qualita_lettura", "?")
         icon = {"alta": "🟢", "media": "🟡", "bassa": "🔴"}.get(qualita, "⚪")
@@ -818,10 +845,6 @@ if st.session_state.ddt_data:
         st.metric("Tipo documento", meta.get("tipo_documento_originale", "?"))
     with col3:
         st.metric("Righe estratte", len(righe))
-    with col4:
-        proc = data.get("_processing", {})
-        tokens = proc.get("tokens_input", 0) + proc.get("tokens_output", 0)
-        st.metric("Token usati", f"{tokens:,}")
 
     if meta.get("campi_incerti"):
         st.warning(f"⚠️ Campi incerti: {', '.join(meta['campi_incerti'])}")
@@ -938,6 +961,18 @@ if st.session_state.ddt_data:
             with col4:
                 iva = st.text_input("IVA", value=riga.get("aliquota_iva") or "22", key=f"iva_{i}")
 
+            # Verifica articolo per codice
+            if cod_art and st.button(f"✔️ Verifica articolo", key=f"btn_art_verify_{i}"):
+                with st.spinner("Verifica articolo..."):
+                    art_found = get_articolo_mexal(cod_art)
+                    if art_found:
+                        st.success(
+                            f"✅ **{art_found.get('codice')}** — {art_found.get('descrizione', '?')} "
+                            f"(UM: {art_found.get('um_principale', '?')}, IVA: {art_found.get('alq_iva', '?')})"
+                        )
+                    else:
+                        st.warning(f"⚠️ Articolo '{cod_art}' non trovato in Mexal")
+
             # Lookup articolo in Mexal
             art_mode = st.radio(
                 "Cerca per",
@@ -961,7 +996,7 @@ if st.session_state.ddt_data:
             if art_search_btn and art_search_text:
                 campo = "codice" if art_mode == "Codice" else "descrizione"
                 with st.spinner("Ricerca articolo in Mexal..."):
-                    art_risultati = search_articoli_mexal(art_search_text, campo=campo)
+                    art_risultati = search_articoli_mexal(art_search_text, campo=campo, max_results=20)
                     st.session_state[f"art_risultati_{i}"] = art_risultati
 
             art_key = f"art_risultati_{i}"
@@ -1006,13 +1041,9 @@ if st.session_state.ddt_data:
     # ---------------------------------------------------------------------------
     st.markdown('<div class="step-header">3 — Crea BF in Mexal</div>', unsafe_allow_html=True)
 
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        numero_bf = st.number_input("Numero BF", value=1, min_value=1, step=1, key="numero_bf")
-    with col2:
-        serie_bf = st.number_input("Serie", value=1, min_value=1, step=1, key="serie_bf")
-    with col3:
-        id_mag = st.number_input("ID Magazzino", value=1, min_value=1, step=1, key="id_mag")
+    numero_bf = st.number_input("Numero BF", value=1, min_value=1, step=1, key="numero_bf")
+    serie_bf = 1
+    id_mag = 1
 
     # Validazione
     errors = []
@@ -1077,7 +1108,6 @@ if st.session_state.ddt_data:
             st.session_state.bf_result = result
 
             if result.get("successo"):
-                st.balloons()
                 st.markdown(f"""
                 <div class="success-box">
                     <h3>✅ BF creata con successo!</h3>
