@@ -28,153 +28,292 @@ render_brand_header("Preventivo &rarr; OC Mexal",
 # Parser preventivo con pdfplumber
 # ===========================================================================
 
+def _parse_num_it(val) -> float:
+    """Parsa un numero in formato italiano: 6.200,00 → 6200.00, -392,80 → -392.80."""
+    if not val:
+        return 0.0
+    s = str(val).replace("€", "").replace("\u202f", "").replace(" ", "").strip()
+    if not s:
+        return 0.0
+    # Formato italiano: 6.200,00 → 6200.00
+    if "," in s:
+        s = s.replace(".", "").replace(",", ".")
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
+
+
+def _parse_iva(val) -> str:
+    if not val:
+        return "22"
+    m = re.search(r'(\d+)\s*%?', str(val))
+    return m.group(1) if m else "22"
+
+
+def _parse_date_it(date_str: str) -> str:
+    """Converte DD/MM/YYYY → YYYYMMDD."""
+    m = re.search(r'(\d{2})/(\d{2})/(\d{4})', date_str)
+    if m:
+        return f"{m.group(3)}{m.group(2)}{m.group(1)}"
+    return date_str
+
+
 def parse_preventivo_pdf(pdf_bytes: bytes) -> dict:
-    """Estrai dati dal PDF preventivo Sofable con pdfplumber."""
+    """Estrai dati dal PDF preventivo Sofable con pdfplumber (tutte le pagine)."""
+    import io
     import pdfplumber
 
-    import io
     pdf = pdfplumber.open(io.BytesIO(pdf_bytes))
+
+    # Estrai testo e tabelle da TUTTE le pagine
     full_text = ""
-    tables = []
+    all_tables = []
     for page in pdf.pages:
         full_text += (page.extract_text() or "") + "\n"
         page_tables = page.extract_tables()
         if page_tables:
-            tables.extend(page_tables)
+            all_tables.extend(page_tables)
     pdf.close()
+
+    lines = [l.strip() for l in full_text.split("\n") if l.strip()]
 
     # --- Testata ---
     testata = {"tipo_documento": "PREVENTIVO"}
 
     # Numero ordine: "Ordine n° S05375" o "Ordine n. S05375"
-    m = re.search(r'Ordine\s+n[°.]\s*(\S+)', full_text)
+    m = re.search(r'Ordine\s+n[°.º]\s*(\S+)', full_text)
     if m:
         testata["numero_preventivo"] = m.group(1)
 
-    # Data offerta
-    m = re.search(r'Data\s+offerta[:\s]*(\d{2}/\d{2}/\d{4})', full_text)
+    # Data offerta: "Data offerta: 02/03/2026" (può essere su una riga con altri campi)
+    m = re.search(r'Data\s+offerta\s*[:\s]\s*(\d{2}/\d{2}/\d{4})', full_text)
     if m:
-        d, mo, y = m.group(1).split("/")
-        testata["data_offerta"] = f"{y}{mo}{d}"
+        testata["data_offerta"] = _parse_date_it(m.group(1))
 
     # Scadenza
-    m = re.search(r'Scadenza[:\s]*(\d{2}/\d{2}/\d{4})', full_text)
+    m = re.search(r'Scadenza\s*[:\s]\s*(\d{2}/\d{2}/\d{4})', full_text)
     if m:
-        d, mo, y = m.group(1).split("/")
-        testata["data_scadenza"] = f"{y}{mo}{d}"
+        testata["data_scadenza"] = _parse_date_it(m.group(1))
 
-    # Addetto vendite
-    m = re.search(r'Addetto\s+vendite[:\s]*(.+?)(?:\n|$)', full_text)
+    # Addetto vendite: cattura solo "Nome Cognome" dopo "Addetto vendite:"
+    # Importante: non catturare tutto fino a fine riga perché la riga
+    # potrebbe contenere anche data, scadenza, ecc.
+    m = re.search(r'Addetto\s+vendite\s*[:\s]\s*([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+)*)', full_text)
     if m:
         testata["addetto_vendite"] = m.group(1).strip()
 
-    # Cliente — blocco dopo "Indirizzo di fatturazione" o primo blocco indirizzo
+    # --- Cliente ---
+    # Il blocco cliente è tra l'header SOFABLE e "Ordine n°".
+    # Struttura tipica:
+    #   SOFABLE SRL
+    #   ...indirizzo sofable...
+    #   Maria Antonietta di Giovanni     ← nome cliente
+    #   Via Santa Reparata 13            ← indirizzo
+    #   Firenze FI 50129                 ← città provincia CAP
+    #   Italia
+    #   Ordine n° S05375
     cliente = {}
-    # Cerca blocco cliente nel testo
-    lines = full_text.split("\n")
+
+    # Trova la riga "Ordine n°" come limite inferiore
+    ordine_idx = None
     for idx, line in enumerate(lines):
-        if "Indirizzo di fatturazione" in line or "Indirizzo di consegna" in line:
-            # Le righe successive contengono i dati cliente
-            block = lines[idx+1:idx+6]
-            if block:
-                cliente["nome"] = block[0].strip()
-                for bl in block[1:]:
-                    bl = bl.strip()
-                    # CAP + città
-                    m_addr = re.match(r'(\d{5})\s+(.+?)(?:\s+\((\w{2})\))?$', bl)
-                    if m_addr:
-                        cliente["cap"] = m_addr.group(1)
-                        cliente["citta"] = m_addr.group(2).strip()
-                        if m_addr.group(3):
-                            cliente["provincia"] = m_addr.group(3)
-                    elif not cliente.get("indirizzo") and bl and not bl.startswith("Indirizzo"):
-                        cliente["indirizzo"] = bl
+        if re.search(r'Ordine\s+n[°.º]', line):
+            ordine_idx = idx
             break
+
+    if ordine_idx and ordine_idx > 3:
+        # Cerca il blocco cliente andando indietro da "Ordine n°"
+        # Salta righe vuote e "Italia"
+        candidate_lines = []
+        for idx in range(ordine_idx - 1, max(ordine_idx - 8, 0), -1):
+            line = lines[idx]
+            # Ferma se arrivi all'header SOFABLE o a righe con P.IVA/email azienda
+            if re.search(r'SOFABLE|P\.?\s*IVA|partita\s+iva|@|sofable\.com|tel', line, re.IGNORECASE):
+                break
+            if line.lower() in ("italia", "italy", "it"):
+                continue
+            # Ferma se sembra indirizzo Sofable (contiene Pistoia, il CAP aziendale, ecc.)
+            if re.search(r'Pistoia|51100|Strada Regionale', line, re.IGNORECASE):
+                break
+            candidate_lines.insert(0, line)
+
+        if candidate_lines:
+            # Prima riga = nome cliente
+            cliente["nome"] = candidate_lines[0]
+
+            # Cerca indirizzo (riga con via/piazza/corso/viale o numero civico)
+            for cl in candidate_lines[1:]:
+                if re.search(r'(?:via|piazza|corso|viale|v\.le|largo|loc\.|strada)\s', cl, re.IGNORECASE) or \
+                   re.search(r'\d+[/a-zA-Z]?\s*$', cl):
+                    cliente["indirizzo"] = cl
+                    break
+
+            # Cerca CAP + Città + Provincia
+            # Formato: "Firenze FI 50129" oppure "50129 Firenze (FI)" oppure "Firenze 50129 FI"
+            for cl in candidate_lines[1:]:
+                # Pattern: Città PROV CAP (es: "Firenze FI 50129")
+                m = re.match(r'^(.+?)\s+([A-Z]{2})\s+(\d{5})$', cl)
+                if m:
+                    cliente["citta"] = m.group(1).strip()
+                    cliente["provincia"] = m.group(2)
+                    cliente["cap"] = m.group(3)
+                    break
+                # Pattern: CAP Città (PROV) (es: "50129 Firenze (FI)")
+                m = re.match(r'^(\d{5})\s+(.+?)(?:\s+\(?([A-Z]{2})\)?)?$', cl)
+                if m:
+                    cliente["cap"] = m.group(1)
+                    cliente["citta"] = m.group(2).strip()
+                    if m.group(3):
+                        cliente["provincia"] = m.group(3)
+                    break
+                # Pattern: Città CAP PROV
+                m = re.match(r'^(.+?)\s+(\d{5})\s+([A-Z]{2})$', cl)
+                if m:
+                    cliente["citta"] = m.group(1).strip()
+                    cliente["cap"] = m.group(2)
+                    cliente["provincia"] = m.group(3)
+                    break
+
+    # Fallback: cerca "Indirizzo di fatturazione" / "Indirizzo di consegna"
+    if not cliente.get("nome"):
+        for idx, line in enumerate(lines):
+            if "Indirizzo di fatturazione" in line or "Indirizzo di consegna" in line:
+                block = lines[idx+1:idx+6]
+                if block:
+                    cliente["nome"] = block[0]
+                    for bl in block[1:]:
+                        m = re.match(r'^(.+?)\s+([A-Z]{2})\s+(\d{5})$', bl)
+                        if m:
+                            cliente["citta"] = m.group(1).strip()
+                            cliente["provincia"] = m.group(2)
+                            cliente["cap"] = m.group(3)
+                        elif re.search(r'(?:via|piazza|corso)\s', bl, re.IGNORECASE):
+                            cliente["indirizzo"] = bl
+                break
+
     testata["cliente"] = cliente
 
     # Totali
-    m = re.search(r'Imponibile[:\s]*([\d.,]+)', full_text)
+    m = re.search(r'Imponibile\s*[:\s]?\s*([\d.,]+)', full_text)
     if m:
-        testata["totale_imponibile"] = float(m.group(1).replace(".", "").replace(",", "."))
-    m = re.search(r'Totale[:\s]*([\d.,]+)\s*€', full_text)
+        testata["totale_imponibile"] = _parse_num_it(m.group(1))
+    m = re.search(r'Totale\s*[:\s]?\s*([\d.,]+)\s*€', full_text)
     if m:
-        testata["totale_documento"] = float(m.group(1).replace(".", "").replace(",", "."))
+        testata["totale_documento"] = _parse_num_it(m.group(1))
 
-    # --- Righe dalla tabella ---
+    # --- Righe dalla tabella (TUTTE le pagine) ---
+    righe = _extract_righe_from_tables(all_tables)
+
+    # Se pdfplumber non ha estratto righe, prova dal testo
+    if not righe:
+        righe = _extract_righe_from_text(lines)
+
+    return {"testata": testata, "righe": righe}
+
+
+def _extract_righe_from_tables(tables: list) -> list[dict]:
+    """Estrai righe articolo dalle tabelle pdfplumber (tutte le pagine)."""
     righe = []
+    col_map_found = None  # Riutilizza la mappa colonne tra tabelle/pagine
+
     for table in tables:
         if not table:
             continue
-        # Cerca header con "Descrizione" e "Quantità"
+
+        start_row = 0
+
+        # Cerca header con "Descrizione"
         header_row = None
         for row_idx, row in enumerate(table):
             row_str = " ".join([str(c or "") for c in row]).lower()
-            if "descrizione" in row_str and ("quanti" in row_str or "importo" in row_str):
+            if "descrizione" in row_str and ("quanti" in row_str or "importo" in row_str or "prezzo" in row_str):
                 header_row = row_idx
                 break
-        if header_row is None:
+
+        if header_row is not None:
+            # Nuova tabella con header: costruisci mappa colonne
+            headers = [str(c or "").strip().lower() for c in table[header_row]]
+            col_map_found = {}
+            for ci, h in enumerate(headers):
+                if "descrizione" in h:
+                    col_map_found["descrizione"] = ci
+                elif "misur" in h:
+                    col_map_found["misure"] = ci
+                elif "quanti" in h:
+                    col_map_found["quantita"] = ci
+                elif "prezzo" in h and "sconto" not in h:
+                    col_map_found["prezzo"] = ci
+                elif "sconto" in h:
+                    col_map_found["sconto"] = ci
+                elif "impost" in h or "iva" in h:
+                    col_map_found["iva"] = ci
+                elif "importo" in h:
+                    col_map_found["importo"] = ci
+            start_row = header_row + 1
+        elif col_map_found:
+            # Tabella di continuazione (pagina 2+): usa la mappa precedente
+            start_row = 0
+        else:
             continue
 
-        headers = [str(c or "").strip().lower() for c in table[header_row]]
-        # Mappa colonne
-        col_map = {}
-        for ci, h in enumerate(headers):
-            if "descrizione" in h:
-                col_map["descrizione"] = ci
-            elif "misur" in h:
-                col_map["misure"] = ci
-            elif "quanti" in h:
-                col_map["quantita"] = ci
-            elif "prezzo" in h:
-                col_map["prezzo"] = ci
-            elif "sconto" in h:
-                col_map["sconto"] = ci
-            elif "impost" in h or "iva" in h:
-                col_map["iva"] = ci
-            elif "importo" in h:
-                col_map["importo"] = ci
-
-        for row in table[header_row + 1:]:
+        for row in table[start_row:]:
             if not row or all(not c for c in row):
                 continue
-            desc = str(row[col_map.get("descrizione", 0)] or "").strip()
-            if not desc or desc.lower() in ("", "totale", "imponibile"):
+            desc = str(row[col_map_found.get("descrizione", 0)] or "").strip()
+            if not desc:
                 continue
-
-            def _parse_num(val):
-                if not val:
-                    return 0.0
-                s = str(val).replace("€", "").replace(" ", "").strip()
-                # Formato italiano: 6.200,00 → 6200.00
-                if "," in s:
-                    s = s.replace(".", "").replace(",", ".")
-                try:
-                    return float(s)
-                except ValueError:
-                    return 0.0
-
-            def _parse_iva(val):
-                if not val:
-                    return "22"
-                m_iva = re.search(r'(\d+)%?', str(val))
-                return m_iva.group(1) if m_iva else "22"
+            # Salta righe di totale/subtotale
+            if desc.lower() in ("totale", "imponibile", "subtotale", "iva 22%"):
+                continue
+            if re.match(r'^(Imponibile|Totale|IVA)\s', desc):
+                continue
 
             riga = {
                 "riga_num": len(righe) + 1,
                 "descrizione": desc,
-                "misure": str(row[col_map["misure"]] or "").strip() if "misure" in col_map else "",
-                "quantita": _parse_num(row[col_map["quantita"]] if "quantita" in col_map else None),
-                "prezzo_unitario": _parse_num(row[col_map["prezzo"]] if "prezzo" in col_map else None),
-                "sconto_percentuale": _parse_num(row[col_map["sconto"]] if "sconto" in col_map else None),
-                "aliquota_iva": _parse_iva(row[col_map["iva"]] if "iva" in col_map else None),
-                "importo": _parse_num(row[col_map["importo"]] if "importo" in col_map else None),
+                "misure": str(row[col_map_found["misure"]] or "").strip() if "misure" in col_map_found and col_map_found["misure"] < len(row) else "",
+                "quantita": _parse_num_it(row[col_map_found["quantita"]] if "quantita" in col_map_found and col_map_found["quantita"] < len(row) else None),
+                "prezzo_unitario": _parse_num_it(row[col_map_found["prezzo"]] if "prezzo" in col_map_found and col_map_found["prezzo"] < len(row) else None),
+                "sconto_percentuale": _parse_num_it(row[col_map_found["sconto"]] if "sconto" in col_map_found and col_map_found["sconto"] < len(row) else None),
+                "aliquota_iva": _parse_iva(row[col_map_found["iva"]] if "iva" in col_map_found and col_map_found["iva"] < len(row) else None),
+                "importo": _parse_num_it(row[col_map_found["importo"]] if "importo" in col_map_found and col_map_found["importo"] < len(row) else None),
             }
-            # Quantità default 1 se 0
-            if riga["quantita"] == 0:
+            # Quantità default 1 se 0 (ma non per sconti negativi)
+            if riga["quantita"] == 0 and riga["prezzo_unitario"] >= 0:
+                riga["quantita"] = 1.0
+            elif riga["quantita"] == 0:
                 riga["quantita"] = 1.0
             righe.append(riga)
 
-    return {"testata": testata, "righe": righe}
+    return righe
+
+
+def _extract_righe_from_text(lines: list[str]) -> list[dict]:
+    """Fallback: estrai righe dalla struttura testuale se le tabelle non funzionano."""
+    righe = []
+    in_table = False
+    for line in lines:
+        if re.match(r'^Descrizione\s', line):
+            in_table = True
+            continue
+        if in_table:
+            if re.match(r'^(Imponibile|Totale|IVA\s|Note)', line):
+                break
+            # Cerca pattern: descrizione ... quantità Unità ... prezzo ... importo €
+            m = re.match(r'^(.+?)\s+([\d,]+)\s+Unit[àa]\s+([\d.,\-]+)\s+([\d.,]+)\s+(\d+)\s*%\s+([\d.,\-]+)\s*€?', line)
+            if m:
+                righe.append({
+                    "riga_num": len(righe) + 1,
+                    "descrizione": m.group(1).strip(),
+                    "misure": "",
+                    "quantita": _parse_num_it(m.group(2)),
+                    "prezzo_unitario": _parse_num_it(m.group(3)),
+                    "sconto_percentuale": _parse_num_it(m.group(4)),
+                    "aliquota_iva": m.group(5),
+                    "importo": _parse_num_it(m.group(6)),
+                })
+    return righe
 
 
 # ===========================================================================
@@ -189,6 +328,14 @@ if uploaded and st.button("📄 Estrai dati", type="primary"):
     with st.spinner("Estrazione dati dal PDF..."):
         try:
             pdf_bytes = uploaded.read()
+            # Debug: salva testo raw per troubleshooting
+            import io, pdfplumber
+            _dbg_pdf = pdfplumber.open(io.BytesIO(pdf_bytes))
+            st.session_state.prev_raw_text = "\n".join(
+                [f"--- Pagina {i+1} ---\n{(p.extract_text() or '')}" for i, p in enumerate(_dbg_pdf.pages)]
+            )
+            _dbg_pdf.close()
+
             result = parse_preventivo_pdf(pdf_bytes)
             st.session_state.prev_data = result
             st.session_state.pop("prev_cliente_trovato", None)
@@ -200,6 +347,8 @@ if uploaded and st.button("📄 Estrai dati", type="primary"):
                     st.session_state.prev_cliente_trovato = found[0].get("codice")
                     st.session_state.prev_clienti_risultati = found
             st.success(f"✅ Estratte {len(result.get('righe', []))} righe dal preventivo")
+            with st.expander("🔍 Debug: testo raw estratto dal PDF"):
+                st.text(st.session_state.get("prev_raw_text", "N/D"))
         except Exception as e:
             st.error(f"❌ Errore parsing: {e}")
 
