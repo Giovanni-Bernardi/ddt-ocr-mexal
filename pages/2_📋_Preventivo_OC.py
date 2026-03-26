@@ -433,8 +433,122 @@ if st.session_state.prev_data:
             st.success(f"✅ Selezionato: **{cli_list[cli_sel_idx].get('codice')}** — {cli_list[cli_sel_idx].get('ragione_sociale')}")
     elif st.session_state.get("prev_clienti_risultati") is not None:
         st.warning("⚠️ Cliente non trovato in Mexal")
-        if st.button("👤 Vai a Anagrafica per creare il cliente"):
-            st.switch_page("pages/3_👤_Anagrafica.py")
+
+        col_crea, col_anag = st.columns(2)
+        with col_anag:
+            if st.button("👤 Vai a Anagrafica per gestione completa"):
+                st.switch_page("pages/3_👤_Anagrafica.py")
+
+        # --- Form creazione cliente inline ---
+        with st.expander("➕ Crea nuovo cliente in Mexal", expanded=True):
+            st.info("Il cliente sarà creato su **Azienda SOF** con codice automatico (501.AUTO)")
+
+            # Split nome cliente per precompilare cognome/nome
+            _nome_parti = cli_nome.strip().split() if cli_nome else []
+            _cognome_default = ""
+            _nome_default = ""
+            if len(_nome_parti) >= 2:
+                # Cerca "di", "de", "del", ecc. come parte del cognome
+                prefissi = {"di", "de", "del", "della", "dello", "degli", "delle", "dal", "dalla", "lo", "la"}
+                # Strategia: ultimo token (o ultimi se preceduti da prefisso) = cognome
+                cognome_parts = [_nome_parti[-1]]
+                for p in reversed(_nome_parti[:-1]):
+                    if p.lower() in prefissi:
+                        cognome_parts.insert(0, p)
+                    else:
+                        break
+                nome_parts = _nome_parti[:len(_nome_parti) - len(cognome_parts)]
+                _cognome_default = " ".join(cognome_parts).upper()
+                _nome_default = " ".join(nome_parts).upper()
+
+            new_tipo = st.radio("Tipo soggetto", ["Persona fisica", "Società"],
+                                horizontal=True, key="prev_new_tipo")
+            is_pf = new_tipo == "Persona fisica"
+
+            col1, col2 = st.columns(2)
+            with col1:
+                if is_pf:
+                    new_cognome = st.text_input("Cognome *", value=_cognome_default, key="prev_new_cognome")
+                    new_nome = st.text_input("Nome *", value=_nome_default, key="prev_new_nome")
+                else:
+                    new_rag_soc = st.text_input("Ragione sociale *", value=cli_nome.upper() if cli_nome else "", key="prev_new_rag")
+                new_cf = st.text_input("Codice fiscale *", key="prev_new_cf",
+                                       help="Obbligatorio per la creazione in Mexal")
+                new_piva = st.text_input("P.IVA", key="prev_new_piva")
+            with col2:
+                new_indirizzo = st.text_input("Indirizzo", value=cli_indirizzo, key="prev_new_ind")
+                new_cap = st.text_input("CAP", value=cli_cap, key="prev_new_cap")
+                new_citta = st.text_input("Città", value=cli_citta.upper() if cli_citta else "", key="prev_new_citta")
+                new_prov = st.text_input("Provincia", value=cli_prov.upper() if cli_prov else "", key="prev_new_prov", max_chars=2)
+                new_tel = st.text_input("Telefono", key="prev_new_tel")
+                new_email = st.text_input("Email", key="prev_new_email")
+
+            if st.button("👤 Crea cliente in Mexal", type="primary", key="prev_btn_crea_cli"):
+                # Validazione
+                _errors = []
+                if is_pf:
+                    if not new_cognome or not new_nome:
+                        _errors.append("Cognome e Nome obbligatori")
+                    rag_sociale = f"{new_cognome.strip().upper()} {new_nome.strip().upper()}"
+                else:
+                    rag_sociale = new_rag_soc.strip().upper() if new_rag_soc else ""
+                    if not rag_sociale:
+                        _errors.append("Ragione sociale obbligatoria")
+                if not new_cf:
+                    _errors.append("Codice fiscale obbligatorio")
+
+                if _errors:
+                    for e in _errors:
+                        st.error(f"❌ {e}")
+                else:
+                    cli_payload = {
+                        "codice": "501.AUTO",
+                        "ragione_sociale": rag_sociale,
+                        "tp_nazionalita": "I",
+                        "cod_paese": "IT",
+                        "cod_listino": 1,
+                        "valuta": 1,
+                        "codice_fiscale": new_cf.strip().upper(),
+                    }
+                    if is_pf:
+                        cli_payload["gest_per_fisica"] = "S"
+                        cli_payload["cognome"] = new_cognome.strip().upper()
+                        cli_payload["nome"] = new_nome.strip().upper()
+                    else:
+                        cli_payload["gest_per_fisica"] = "N"
+                    if new_piva:
+                        cli_payload["partita_iva"] = new_piva.replace("IT", "").strip()
+                    if new_indirizzo:
+                        cli_payload["indirizzo"] = new_indirizzo.strip().upper()
+                    if new_cap:
+                        cli_payload["cap"] = new_cap.strip()
+                    if new_citta:
+                        cli_payload["localita"] = new_citta.strip().upper()
+                    if new_prov:
+                        cli_payload["provincia"] = new_prov.strip().upper()
+                    if new_tel:
+                        cli_payload["telefono"] = new_tel.strip()
+                    if new_email:
+                        cli_payload["email"] = new_email.strip()
+
+                    with st.spinner("Creazione cliente in corso..."):
+                        cli_result = mx.crea_cliente(cli_payload)
+                        if cli_result.get("successo"):
+                            # Cerca il codice assegnato tramite CF
+                            found_cli = mx.search_clienti("codice_fiscale", new_cf.strip().upper(), condizione="=")
+                            codice_assegnato = found_cli[0].get("codice", "") if found_cli else ""
+                            if codice_assegnato:
+                                st.session_state.prev_cliente_trovato = codice_assegnato
+                            st.success(f"✅ Cliente creato: **{rag_sociale}** ({codice_assegnato or 'vedi Location'})")
+                            st.rerun()
+                        else:
+                            st.markdown(f"""
+                            <div class="error-box">
+                                <h3>❌ Errore creazione cliente</h3>
+                                <p>{cli_result.get('errore', '?')}</p>
+                                <pre>{json.dumps(cli_result.get('dettaglio', {}), indent=2, ensure_ascii=False)}</pre>
+                            </div>
+                            """, unsafe_allow_html=True)
 
     # Codice cliente Mexal
     _cli_trovato = st.session_state.get("prev_cliente_trovato")
