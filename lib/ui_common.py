@@ -210,11 +210,13 @@ def render_sidebar():
 
     _claude_ok = bool(claude_key)
     _mexal_ok = all([webapi_user, webapi_pwd, admin_user, admin_pwd])
+    _odoo_ok = bool(get_secret("ODOO_USERNAME") and get_secret("ODOO_PASSWORD"))
 
     with st.sidebar:
         st.markdown("### Stato connessione")
         st.markdown(f"{'🟢' if _claude_ok else '🔴'} **Claude API** — {'configurata' if _claude_ok else 'mancante'}")
         st.markdown(f"{'🟢' if _mexal_ok else '🔴'} **Mexal WebAPI** — {'configurata' if _mexal_ok else 'credenziali mancanti'}")
+        st.markdown(f"{'🟢' if _odoo_ok else '🔴'} **Odoo CRM** — {'configurato' if _odoo_ok else 'mancante'}")
         st.caption(f"Documenti: **SUT** | Anagrafiche: **SOF** | Anno: **{anno}** | Dominio: **{dominio}**")
         st.divider()
         if st.button("🔌 Test Connessione Mexal"):
