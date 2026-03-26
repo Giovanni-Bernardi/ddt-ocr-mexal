@@ -86,21 +86,41 @@ def parse_preventivo_pdf(pdf_bytes: bytes) -> dict:
     if m:
         testata["numero_preventivo"] = m.group(1)
 
-    # Data offerta: "Data offerta: 02/03/2026"
-    m = re.search(r'Data offerta[:\s]+(\d{2}/\d{2}/\d{4})', full_text)
-    if m:
-        testata["data_offerta"] = _parse_date_it(m.group(1))
+    # Data offerta, scadenza, addetto vendite.
+    # Nel PDF pdfplumber estrae etichette e valori su righe SEPARATE:
+    #   Riga N:   "Data offerta: Scadenza: Termini di pagamento: Addetto vendite:"
+    #   Riga N+1: "02/03/2026 26/03/2026                            Eva Giusti"
+    # Approccio: trova la riga etichette, poi parsa la riga valori.
 
-    # Scadenza: "Scadenza: 26/03/2026"
-    m = re.search(r'Scadenza[:\s]+(\d{2}/\d{2}/\d{4})', full_text)
-    if m:
-        testata["data_scadenza"] = _parse_date_it(m.group(1))
+    # Tentativo 1: etichette e valori su righe separate
+    for idx, line in enumerate(lines):
+        if "Data offerta" in line and idx + 1 < len(lines):
+            val_line = lines[idx + 1]
+            # Estrai tutte le date DD/MM/YYYY dalla riga valori
+            dates = re.findall(r'\d{2}/\d{2}/\d{4}', val_line)
+            if dates:
+                testata["data_offerta"] = _parse_date_it(dates[0])
+                if len(dates) >= 2:
+                    testata["data_scadenza"] = _parse_date_it(dates[1])
+            # Addetto vendite: testo restante dopo le date (non numerico, non vuoto)
+            addetto_text = re.sub(r'\d{2}/\d{2}/\d{4}', '', val_line).strip()
+            if addetto_text:
+                testata["addetto_vendite"] = addetto_text
+            break
 
-    # Addetto vendite: "Addetto vendite: Eva Giusti"
-    # Cattura tutto fino a newline, "Data", o fine stringa
-    m = re.search(r'Addetto vendite[:\s]+(.+?)(?:\n|Data|$)', full_text)
-    if m:
-        testata["addetto_vendite"] = m.group(1).strip()
+    # Tentativo 2 (fallback): etichette e valori sulla stessa riga
+    if "data_offerta" not in testata:
+        m = re.search(r'Data offerta[:\s]+(\d{2}/\d{2}/\d{4})', full_text)
+        if m:
+            testata["data_offerta"] = _parse_date_it(m.group(1))
+    if "data_scadenza" not in testata:
+        m = re.search(r'Scadenza[:\s]+(\d{2}/\d{2}/\d{4})', full_text)
+        if m:
+            testata["data_scadenza"] = _parse_date_it(m.group(1))
+    if "addetto_vendite" not in testata:
+        m = re.search(r'Addetto vendite[:\s]+(.+?)(?:\n|Data|$)', full_text)
+        if m:
+            testata["addetto_vendite"] = m.group(1).strip()
 
     # --- Cliente ---
     # Il blocco cliente è tra l'header SOFABLE e "Ordine n°".
