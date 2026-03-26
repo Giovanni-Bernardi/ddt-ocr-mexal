@@ -120,30 +120,60 @@ GET /risorse/documenti/ordini-clienti?info=true
 ```
 Con header Coordinate-Gestionale: Azienda=SUT Anno=2026
 
-## API Mexal per anagrafica clienti
+## GESTIONE DOPPIA AZIENDA
 
-### Creazione cliente
+CRITICO: le WebAPI usano DUE aziende diverse nell'header Coordinate-Gestionale:
+- **SOF** per anagrafiche (clienti, fornitori): `Azienda=SOF Anno=2026`
+- **SUT** per documenti (OC, BF) e articoli: `Azienda=SUT Anno=2026`
+
+## API Mexal per anagrafica clienti (Azienda SOF!)
+
+### Creazione cliente — TESTATO 201 OK
 ```
 POST https://services.passepartout.cloud/webapi/risorse/clienti
+Header: Coordinate-Gestionale: Azienda=SOF Anno=2026
 ```
 
-Payload:
+Campi OBBLIGATORI (senza questi → errore 400):
+- `codice`: "501.AUTO" (numerazione automatica)
+- `ragione_sociale`
+- `tp_nazionalita`: "I"
+- `cod_paese`: "IT"
+- `codice_fiscale` (senza → errore "Partita iva e codice fiscale assenti")
+- `cod_listino`: 1 (senza → errore "Il listino deve essere compreso tra 1 e 999")
+- `valuta`: 1 (senza → errore "Valuta estera errata")
+
+Campi opzionali:
+- `gest_per_fisica`: "S" per persone fisiche, "N" per società
+- `cognome`, `nome` (per persone fisiche)
+- `indirizzo`, `cap`, `localita`, `provincia`
+- `partita_iva`, `telefono`, `email`, `pec`
+
+Payload testato e funzionante:
 ```json
 {
   "codice": "501.AUTO",
-  "ragione_sociale": "Maria Antonietta di Giovanni",
+  "ragione_sociale": "BERNARDI GIOVANNI",
   "tp_nazionalita": "I",
   "cod_paese": "IT",
-  "indirizzo": "Via Santa Reparata 13",
-  "cap": "50129",
-  "localita": "FIRENZE",
-  "provincia": "FI",
-  "partita_iva": "",
-  "codice_fiscale": "DGVMNT..."
+  "gest_per_fisica": "S",
+  "cognome": "BERNARDI",
+  "nome": "GIOVANNI",
+  "codice_fiscale": "BRNGNN90A01F205X",
+  "indirizzo": "VIA TEST 1",
+  "cap": "20129",
+  "localita": "MILANO",
+  "provincia": "MI",
+  "cod_listino": 1,
+  "valuta": 1
 }
 ```
 
-**NOTA**: `codice: "501.AUTO"` crea il cliente con numerazione automatica sul mastro 501.
+### Cancellazione cliente
+```
+DELETE /risorse/clienti/{codice}
+Header: Coordinate-Gestionale: Azienda=SOF Anno=2026
+```
 
 ### Ricerca cliente
 ```
@@ -228,9 +258,12 @@ GET /risorse/clienti/501.00022
 - Risultati in tabella con selezione
 
 ### Crea nuovo cliente
-- Form con campi: ragione_sociale, indirizzo, CAP, città, provincia, P.IVA, CF, telefono, email
+- Toggle "Persona fisica / Società"
+- Campi obbligatori: ragione_sociale (o cognome+nome), codice_fiscale, cod_listino=1, valuta=1
+- Campi opzionali: indirizzo, CAP, città, provincia, P.IVA, telefono, email, PEC
 - Codice: 501.AUTO (automatico)
-- Bottone "Crea in Mexal"
+- Bottone "Crea in Mexal" + bottone "Annulla" per eliminare l'ultimo creato
+- IMPORTANTE: creazione su Azienda=SOF (non SUT!)
 - In futuro: bottone "Importa da Odoo" (placeholder)
 
 ## Note tecniche

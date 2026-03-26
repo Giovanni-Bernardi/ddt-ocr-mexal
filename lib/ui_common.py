@@ -205,7 +205,6 @@ def render_sidebar():
     admin_user = get_secret("MEXAL_ADMIN_USER", "admin")
     admin_pwd = get_secret("MEXAL_ADMIN_PASSWORD")
     dominio = get_secret("MEXAL_DOMINIO", "mantellassi")
-    azienda = get_secret("MEXAL_AZIENDA", "SUT")
     anno = get_secret("MEXAL_ANNO", "2026")
     claude_key = get_secret("ANTHROPIC_API_KEY")
 
@@ -216,7 +215,7 @@ def render_sidebar():
         st.markdown("### Stato connessione")
         st.markdown(f"{'🟢' if _claude_ok else '🔴'} **Claude API** — {'configurata' if _claude_ok else 'mancante'}")
         st.markdown(f"{'🟢' if _mexal_ok else '🔴'} **Mexal WebAPI** — {'configurata' if _mexal_ok else 'credenziali mancanti'}")
-        st.caption(f"Azienda: **{azienda}** | Anno: **{anno}** | Dominio: **{dominio}**")
+        st.caption(f"Documenti: **SUT** | Anagrafiche: **SOF** | Anno: **{anno}** | Dominio: **{dominio}**")
         st.divider()
         if st.button("🔌 Test Connessione Mexal"):
             if not _mexal_ok:

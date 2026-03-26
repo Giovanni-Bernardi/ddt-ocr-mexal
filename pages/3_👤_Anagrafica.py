@@ -1,6 +1,7 @@
-"""Pagina Anagrafica Clienti — ricerca e creazione clienti in Mexal."""
+"""Pagina Anagrafica Clienti — ricerca e creazione clienti in Mexal (Azienda SOF)."""
 
 import json
+import re
 import streamlit as st
 
 from lib.ui_common import inject_css, require_login, render_brand_header, render_sidebar
@@ -13,7 +14,7 @@ render_sidebar()
 
 mx = MexalClient()
 
-render_brand_header("Anagrafica Clienti", "Cerca e crea clienti in Mexal")
+render_brand_header("Anagrafica Clienti", "Cerca e crea clienti in Mexal (Azienda SOF)")
 
 # ===========================================================================
 # Ricerca cliente
@@ -42,7 +43,6 @@ if search_btn and search_text:
     with st.spinner("Ricerca in corso..."):
         campo = campo_map[search_mode]
         if search_mode == "Codice Mexal":
-            # Ricerca diretta per codice
             result = mx.get_cliente(search_text)
             st.session_state.anag_risultati = [result] if result else []
         else:
@@ -53,7 +53,6 @@ if st.session_state.get("anag_risultati"):
     clienti = st.session_state.anag_risultati
     st.success(f"Trovati {len(clienti)} clienti")
 
-    # Tabella risultati
     table_data = []
     for c in clienti:
         table_data.append({
@@ -66,7 +65,6 @@ if st.session_state.get("anag_risultati"):
         })
     st.dataframe(table_data, use_container_width=True, hide_index=True)
 
-    # Dettaglio cliente selezionato
     sel_idx = st.selectbox("Seleziona un cliente per i dettagli",
                            range(len(clienti)),
                            format_func=lambda i: f"{clienti[i].get('codice', '?')} — {clienti[i].get('ragione_sociale', '?')}",
@@ -83,36 +81,74 @@ elif st.session_state.get("anag_risultati") is not None:
 # ===========================================================================
 st.markdown('<div class="step-header">Crea nuovo cliente</div>', unsafe_allow_html=True)
 
+st.info("Le anagrafiche clienti vengono create su **Azienda SOF**. "
+        "Codice assegnato automaticamente (501.AUTO).")
+
 with st.form("form_crea_cliente"):
-    st.markdown("Il codice sarà assegnato automaticamente da Mexal (501.AUTO)")
+    # Toggle persona fisica / società
+    tipo_soggetto = st.radio("Tipo soggetto", ["Persona fisica", "Società"],
+                             horizontal=True, key="new_tipo_sogg")
+    is_persona_fisica = tipo_soggetto == "Persona fisica"
 
     col1, col2 = st.columns(2)
     with col1:
-        new_ragione = st.text_input("Ragione sociale *", key="new_ragione")
+        if is_persona_fisica:
+            new_cognome = st.text_input("Cognome *", key="new_cognome")
+            new_nome = st.text_input("Nome *", key="new_nome")
+            # Ragione sociale auto-composta
+            st.caption("La ragione sociale sarà: COGNOME NOME")
+        else:
+            new_ragione = st.text_input("Ragione sociale *", key="new_ragione_soc")
         new_indirizzo = st.text_input("Indirizzo", key="new_indirizzo")
         new_cap = st.text_input("CAP", key="new_cap")
         new_localita = st.text_input("Città", key="new_localita")
         new_provincia = st.text_input("Provincia (2 lettere)", key="new_provincia", max_chars=2)
     with col2:
-        new_piva = st.text_input("Partita IVA", key="new_piva")
-        new_cf = st.text_input("Codice fiscale", key="new_cf")
+        new_cf = st.text_input("Codice fiscale *", key="new_cf",
+                               help="Obbligatorio per la creazione in Mexal")
+        new_piva = st.text_input("Partita IVA", key="new_piva",
+                                 help="Obbligatoria per società, opzionale per persone fisiche")
         new_telefono = st.text_input("Telefono", key="new_telefono")
         new_email = st.text_input("Email", key="new_email")
+        new_pec = st.text_input("PEC", key="new_pec")
 
     submitted = st.form_submit_button("👤 Crea cliente in Mexal", type="primary")
 
 if submitted:
-    if not new_ragione:
-        st.error("La ragione sociale è obbligatoria")
+    # Validazione
+    errors = []
+    if is_persona_fisica:
+        ragione_sociale = f"{new_cognome.strip().upper()} {new_nome.strip().upper()}" if new_cognome and new_nome else ""
+        if not new_cognome or not new_nome:
+            errors.append("Cognome e Nome sono obbligatori per persone fisiche")
+    else:
+        ragione_sociale = new_ragione.strip().upper() if new_ragione else ""
+        if not ragione_sociale:
+            errors.append("Ragione sociale è obbligatoria")
+    if not new_cf:
+        errors.append("Codice fiscale è obbligatorio")
+
+    if errors:
+        for e in errors:
+            st.error(f"❌ {e}")
     else:
         payload = {
             "codice": "501.AUTO",
-            "ragione_sociale": new_ragione.strip(),
+            "ragione_sociale": ragione_sociale,
             "tp_nazionalita": "I",
             "cod_paese": "IT",
+            "cod_listino": 1,
+            "valuta": 1,
+            "codice_fiscale": new_cf.strip().upper(),
         }
+        if is_persona_fisica:
+            payload["gest_per_fisica"] = "S"
+            payload["cognome"] = new_cognome.strip().upper()
+            payload["nome"] = new_nome.strip().upper()
+        else:
+            payload["gest_per_fisica"] = "N"
         if new_indirizzo:
-            payload["indirizzo"] = new_indirizzo.strip()
+            payload["indirizzo"] = new_indirizzo.strip().upper()
         if new_cap:
             payload["cap"] = new_cap.strip()
         if new_localita:
@@ -121,20 +157,39 @@ if submitted:
             payload["provincia"] = new_provincia.strip().upper()
         if new_piva:
             payload["partita_iva"] = new_piva.replace("IT", "").strip()
-        if new_cf:
-            payload["codice_fiscale"] = new_cf.strip().upper()
+        if new_telefono:
+            payload["telefono"] = new_telefono.strip()
+        if new_email:
+            payload["email"] = new_email.strip()
+        if new_pec:
+            payload["pec"] = new_pec.strip()
+
+        with st.expander("👀 Anteprima payload JSON"):
+            st.json(payload)
 
         with st.spinner("Creazione cliente in corso..."):
             result = mx.crea_cliente(payload)
             if result.get("successo"):
                 location = result.get("location", "")
+                # Estrai codice dal Location (es: /risorse/clienti/501.00086)
+                codice_assegnato = ""
+                m = re.search(r'clienti/(\d+\.\d+)', location)
+                if m:
+                    codice_assegnato = m.group(1)
                 st.markdown(f"""
                 <div class="success-box">
                     <h3>✅ Cliente creato con successo</h3>
-                    <p><b>{new_ragione}</b></p>
-                    <p>Location: {location}</p>
+                    <p><b>{ragione_sociale}</b></p>
+                    <p>Codice Mexal assegnato: <b>{codice_assegnato or '(vedi Location)'}</b></p>
+                    <p>CF: {new_cf.strip().upper()}</p>
+                    <p>Location: <code>{location}</code></p>
                 </div>
                 """, unsafe_allow_html=True)
+                st.session_state.anag_ultimo_creato = {
+                    "codice": codice_assegnato,
+                    "ragione_sociale": ragione_sociale,
+                    "location": location,
+                }
             else:
                 st.markdown(f"""
                 <div class="error-box">
@@ -143,3 +198,22 @@ if submitted:
                     <pre>{json.dumps(result.get('dettaglio', {}), indent=2, ensure_ascii=False)}</pre>
                 </div>
                 """, unsafe_allow_html=True)
+
+# Bottone annulla ultimo cliente creato
+if st.session_state.get("anag_ultimo_creato"):
+    ultimo = st.session_state.anag_ultimo_creato
+    if ultimo.get("codice"):
+        st.divider()
+        st.markdown(f"Ultimo cliente creato: **{ultimo['codice']}** — {ultimo['ragione_sociale']}")
+        if st.button(f"🗑️ Annulla creazione {ultimo['codice']}", key="btn_annulla_cliente"):
+            conferma = st.warning(f"Sei sicuro di voler eliminare il cliente **{ultimo['codice']}**?")
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("✅ Sì, elimina", key="btn_conferma_elimina"):
+                    with st.spinner("Eliminazione in corso..."):
+                        result = mx.elimina_cliente(ultimo["codice"])
+                        if result.get("successo"):
+                            st.success(f"✅ Cliente {ultimo['codice']} eliminato")
+                            st.session_state.pop("anag_ultimo_creato", None)
+                        else:
+                            st.error(f"❌ {result.get('errore', '?')}")

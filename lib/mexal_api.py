@@ -1,4 +1,9 @@
-"""Client API Mexal condiviso — autenticazione, ricerche, creazione documenti."""
+"""Client API Mexal condiviso — autenticazione, ricerche, creazione documenti.
+
+Gestisce DUE aziende:
+- SOF per anagrafiche (clienti, fornitori)
+- SUT per documenti (OC, BF) e articoli
+"""
 
 import base64
 from typing import Optional
@@ -12,9 +17,13 @@ from lib.ui_common import get_secret
 MAX_RETRIES = 3
 RETRY_BASE_DELAY = 3
 
+# Aziende
+AZ_DOCUMENTI = "SUT"   # OC, BF, articoli
+AZ_ANAGRAFICHE = "SOF"  # clienti, fornitori
+
 
 class MexalClient:
-    """Client per WebAPI Mexal/Passepartout."""
+    """Client per WebAPI Mexal/Passepartout con supporto doppia azienda."""
 
     def __init__(self):
         self.base_url = get_secret("MEXAL_BASE_URL", "https://services.passepartout.cloud/webapi")
@@ -23,16 +32,17 @@ class MexalClient:
         self._admin_user = get_secret("MEXAL_ADMIN_USER", "admin")
         self._admin_pwd = get_secret("MEXAL_ADMIN_PASSWORD")
         self._dominio = get_secret("MEXAL_DOMINIO", "mantellassi")
-        self._azienda = get_secret("MEXAL_AZIENDA", "SUT")
         self._anno = get_secret("MEXAL_ANNO", "2026")
 
-    def headers(self) -> dict:
+    def headers(self, azienda: str | None = None) -> dict:
+        """Costruisce gli header Mexal. azienda default = SUT."""
+        az = azienda or AZ_DOCUMENTI
         token1 = base64.b64encode(f"{self._webapi_user}:{self._webapi_pwd}".encode()).decode()
         token2 = base64.b64encode(f"{self._admin_user}:{self._admin_pwd}".encode()).decode()
         return {
             "Authorization": f"Passepartout {token1} {token2} DOMINIO={self._dominio}",
             "Content-Type": "application/json",
-            "Coordinate-Gestionale": f"Azienda={self._azienda} Anno={self._anno}",
+            "Coordinate-Gestionale": f"Azienda={az} Anno={self._anno}",
         }
 
     def _session(self) -> requests.Session:
@@ -41,28 +51,36 @@ class MexalClient:
             total=MAX_RETRIES,
             backoff_factor=RETRY_BASE_DELAY,
             status_forcelist=[429, 500, 502, 503, 529],
-            allowed_methods=["GET", "POST"],
+            allowed_methods=["GET", "POST", "DELETE"],
         )
         adapter = HTTPAdapter(max_retries=retry)
         session.mount("https://", adapter)
         session.mount("http://", adapter)
         return session
 
-    def _get(self, path: str, params: dict | None = None, timeout: int = 15):
-        return self._session().get(f"{self.base_url}{path}", headers=self.headers(),
-                                   params=params, timeout=timeout)
+    def _get(self, path: str, params: dict | None = None, timeout: int = 15,
+             azienda: str | None = None):
+        return self._session().get(f"{self.base_url}{path}",
+                                   headers=self.headers(azienda), params=params, timeout=timeout)
 
-    def _post(self, path: str, json_data: dict, params: dict | None = None, timeout: int = 15):
-        return self._session().post(f"{self.base_url}{path}", headers=self.headers(),
-                                    json=json_data, params=params, timeout=timeout)
+    def _post(self, path: str, json_data: dict, params: dict | None = None,
+              timeout: int = 15, azienda: str | None = None):
+        return self._session().post(f"{self.base_url}{path}",
+                                    headers=self.headers(azienda), json=json_data,
+                                    params=params, timeout=timeout)
+
+    def _delete(self, path: str, timeout: int = 15, azienda: str | None = None):
+        return self._session().delete(f"{self.base_url}{path}",
+                                      headers=self.headers(azienda), timeout=timeout)
 
     # -----------------------------------------------------------------------
-    # Fornitori
+    # Fornitori (azienda SOF)
     # -----------------------------------------------------------------------
     def search_fornitore_by_piva(self, partita_iva: str) -> Optional[dict]:
         piva = partita_iva.replace("IT", "").strip()
         resp = self._post("/risorse/fornitori/ricerca",
-                          {"filtri": [{"campo": "partita_iva", "condizione": "=", "valore": piva}]})
+                          {"filtri": [{"campo": "partita_iva", "condizione": "=", "valore": piva}]},
+                          azienda=AZ_ANAGRAFICHE)
         if resp.status_code == 200:
             dati = resp.json().get("dati", [])
             return dati[0] if dati else None
@@ -72,38 +90,38 @@ class MexalClient:
         resp = self._post("/risorse/fornitori/ricerca",
                           {"filtri": [{"campo": "ragione_sociale", "condizione": "contiene",
                                        "case_insensitive": True, "valore": testo.strip()}]},
-                          params={"max": max_results})
+                          params={"max": max_results}, azienda=AZ_ANAGRAFICHE)
         if resp.status_code == 200:
             return resp.json().get("dati", [])
         return []
 
     def list_fornitori(self, max_results: int = 50) -> list[dict]:
-        resp = self._get("/risorse/fornitori", params={"max": max_results})
+        resp = self._get("/risorse/fornitori", params={"max": max_results}, azienda=AZ_ANAGRAFICHE)
         if resp.status_code == 200:
             return resp.json().get("dati", [])
         return []
 
     # -----------------------------------------------------------------------
-    # Clienti
+    # Clienti (azienda SOF)
     # -----------------------------------------------------------------------
     def search_clienti(self, campo: str, valore: str, condizione: str = "contiene",
                        max_results: int = 50) -> list[dict]:
         resp = self._post("/risorse/clienti/ricerca",
                           {"filtri": [{"campo": campo, "condizione": condizione,
                                        "case_insensitive": True, "valore": valore.strip()}]},
-                          params={"max": max_results})
+                          params={"max": max_results}, azienda=AZ_ANAGRAFICHE)
         if resp.status_code == 200:
             return resp.json().get("dati", [])
         return []
 
     def get_cliente(self, codice: str) -> Optional[dict]:
-        resp = self._get(f"/risorse/clienti/{codice}")
+        resp = self._get(f"/risorse/clienti/{codice}", azienda=AZ_ANAGRAFICHE)
         if resp.status_code == 200:
             return resp.json()
         return None
 
     def crea_cliente(self, payload: dict) -> dict:
-        resp = self._post("/risorse/clienti", payload, timeout=30)
+        resp = self._post("/risorse/clienti", payload, timeout=30, azienda=AZ_ANAGRAFICHE)
         if resp.status_code == 201:
             return {"successo": True, "location": resp.headers.get("Location", "")}
         try:
@@ -112,8 +130,18 @@ class MexalClient:
             err = {"raw": resp.text[:500]}
         return {"errore": f"HTTP {resp.status_code}", "dettaglio": err}
 
+    def elimina_cliente(self, codice: str) -> dict:
+        resp = self._delete(f"/risorse/clienti/{codice}", azienda=AZ_ANAGRAFICHE)
+        if resp.status_code in (200, 204):
+            return {"successo": True}
+        try:
+            err = resp.json()
+        except Exception:
+            err = {"raw": resp.text[:500]}
+        return {"errore": f"HTTP {resp.status_code}", "dettaglio": err}
+
     # -----------------------------------------------------------------------
-    # Articoli
+    # Articoli (azienda SUT)
     # -----------------------------------------------------------------------
     def search_articoli(self, testo: str, campo: str = "descrizione",
                         max_results: int = 20) -> list[dict]:
@@ -122,7 +150,7 @@ class MexalClient:
         def _do(query: str) -> list[dict]:
             resp = session.post(
                 f"{self.base_url}/risorse/articoli/ricerca?max={max_results}",
-                headers=self.headers(),
+                headers=self.headers(AZ_DOCUMENTI),
                 json={"filtri": [{"campo": campo, "condizione": "contiene",
                                   "case_insensitive": True, "valore": query.strip()}]},
                 timeout=15,
@@ -140,16 +168,17 @@ class MexalClient:
         return risultati
 
     def get_articolo(self, codice: str) -> Optional[dict]:
-        resp = self._get(f"/risorse/articoli/{codice}")
+        resp = self._get(f"/risorse/articoli/{codice}", azienda=AZ_DOCUMENTI)
         if resp.status_code == 200:
             return resp.json()
         return None
 
     # -----------------------------------------------------------------------
-    # Documenti
+    # Documenti (azienda SUT)
     # -----------------------------------------------------------------------
     def crea_bf(self, payload: dict) -> dict:
-        resp = self._post("/risorse/documenti/movimenti-magazzino", payload, timeout=30)
+        resp = self._post("/risorse/documenti/movimenti-magazzino", payload,
+                          timeout=30, azienda=AZ_DOCUMENTI)
         if resp.status_code == 201:
             return {"successo": True, "location": resp.headers.get("Location", "")}
         try:
@@ -159,9 +188,32 @@ class MexalClient:
         return {"errore": f"HTTP {resp.status_code}", "dettaglio": err}
 
     def crea_oc(self, payload: dict) -> dict:
-        resp = self._post("/risorse/documenti/ordini-clienti", payload, timeout=30)
+        resp = self._post("/risorse/documenti/ordini-clienti", payload,
+                          timeout=30, azienda=AZ_DOCUMENTI)
         if resp.status_code == 201:
             return {"successo": True, "location": resp.headers.get("Location", "")}
+        try:
+            err = resp.json()
+        except Exception:
+            err = {"raw": resp.text[:500]}
+        return {"errore": f"HTTP {resp.status_code}", "dettaglio": err}
+
+    def elimina_oc(self, serie: int, numero: int) -> dict:
+        resp = self._delete(f"/risorse/documenti/ordini-clienti/OC+{serie}+{numero}",
+                            azienda=AZ_DOCUMENTI)
+        if resp.status_code in (200, 204):
+            return {"successo": True}
+        try:
+            err = resp.json()
+        except Exception:
+            err = {"raw": resp.text[:500]}
+        return {"errore": f"HTTP {resp.status_code}", "dettaglio": err}
+
+    def elimina_bf(self, serie: int, numero: int) -> dict:
+        resp = self._delete(f"/risorse/documenti/movimenti-magazzino/BF+{serie}+{numero}",
+                            azienda=AZ_DOCUMENTI)
+        if resp.status_code in (200, 204):
+            return {"successo": True}
         try:
             err = resp.json()
         except Exception:

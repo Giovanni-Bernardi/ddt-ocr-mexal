@@ -542,17 +542,27 @@ if st.session_state.prev_data:
         with st.spinner("Creazione OC in corso..."):
             result = mx.crea_oc(payload)
             if result.get("successo"):
+                # Estrai numero OC dal Location (es: /risorse/documenti/ordini-clienti/OC+1+42)
+                location = result.get("location", "")
+                import re as _re
+                m_loc = _re.search(r'OC\+(\d+)\+(\d+)', location)
+                oc_serie = int(m_loc.group(1)) if m_loc else 1
+                oc_numero = int(m_loc.group(2)) if m_loc else 0
+
                 st.markdown(f"""
                 <div class="success-box">
                     <h3>✅ OC creato con successo</h3>
-                    <p>Preventivo: <b>{num_prev}</b> del {data_offerta}</p>
+                    <p>OC {oc_serie}/{oc_numero} — Preventivo: <b>{num_prev}</b> del {data_offerta}</p>
                     <p>Cliente: {cli_nome} ({cod_conto})</p>
-                    <p>Location: {result.get('location', '-')}</p>
+                    <p>Location: <code>{location}</code></p>
                 </div>
                 """, unsafe_allow_html=True)
+
+                st.session_state.prev_ultimo_oc = {"serie": oc_serie, "numero": oc_numero,
+                                                   "cliente": cli_nome, "cod_conto": cod_conto}
                 st.session_state.prev_storico.append({
                     "timestamp": datetime.now().strftime("%H:%M:%S"),
-                    "doc": f"OC da {num_prev}", "cliente": cli_nome,
+                    "doc": f"OC {oc_serie}/{oc_numero} da {num_prev}", "cliente": cli_nome,
                     "cod_cliente": cod_conto, "data": data_offerta,
                     "righe": len(edited_righe), "stato": "✅",
                 })
@@ -564,6 +574,19 @@ if st.session_state.prev_data:
                     <pre>{json.dumps(result.get('dettaglio', {}), indent=2, ensure_ascii=False)}</pre>
                 </div>
                 """, unsafe_allow_html=True)
+
+    # Bottone annulla ultimo OC
+    if st.session_state.get("prev_ultimo_oc"):
+        ultimo = st.session_state.prev_ultimo_oc
+        st.markdown(f"Ultimo OC creato: **OC {ultimo['serie']}/{ultimo['numero']}** — {ultimo['cliente']}")
+        if st.button(f"🗑️ Annulla OC {ultimo['serie']}/{ultimo['numero']}", key="btn_annulla_oc"):
+            with st.spinner("Eliminazione OC in corso..."):
+                del_result = mx.elimina_oc(ultimo["serie"], ultimo["numero"])
+                if del_result.get("successo"):
+                    st.success(f"✅ OC {ultimo['serie']}/{ultimo['numero']} eliminato")
+                    st.session_state.pop("prev_ultimo_oc", None)
+                else:
+                    st.error(f"❌ {del_result.get('errore', '?')}")
 
 # Storico
 if st.session_state.prev_storico:
