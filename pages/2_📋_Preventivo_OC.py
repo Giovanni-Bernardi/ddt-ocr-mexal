@@ -562,7 +562,17 @@ if st.session_state.prev_data:
     st.subheader("📦 Righe articolo")
     edited_righe = []
     for i, riga in enumerate(righe):
-        with st.expander(f"Riga {i+1}: {riga.get('descrizione', '?')}", expanded=True):
+        # Determina stato codice articolo per il titolo dell'expander
+        _cur_cod = st.session_state.get(f"prev_art_sel_{i}") or st.session_state.get(f"prev_codart_{i}", "")
+        _is_desc_only = st.session_state.get(f"prev_desc_only_{i}", False)
+        if _is_desc_only:
+            _status = "📝"
+        elif _cur_cod:
+            _status = "✅"
+        else:
+            _status = "⚠️"
+
+        with st.expander(f"{_status} Riga {i+1}: {riga.get('descrizione', '?')}", expanded=True):
             col1, col2, col3 = st.columns([5, 1, 1])
             with col1:
                 desc = st.text_input("Descrizione", value=riga.get("descrizione", ""), key=f"prev_desc_{i}")
@@ -583,42 +593,61 @@ if st.session_state.prev_data:
                 importo = st.number_input("Importo", value=float(riga.get("importo", 0)),
                                            key=f"prev_importo_{i}", step=0.01)
 
-            # Lookup articolo Mexal
-            _sel_art = st.session_state.get(f"prev_art_sel_{i}")
-            if _sel_art:
-                st.session_state[f"prev_codart_{i}"] = _sel_art
-            elif f"prev_codart_{i}" not in st.session_state:
-                st.session_state[f"prev_codart_{i}"] = ""
-            codice_art = st.text_input("Codice articolo Mexal", key=f"prev_codart_{i}",
-                                  placeholder="Cerca sotto o compila manualmente")
+            # Checkbox riga solo descrizione
+            desc_only = st.checkbox(
+                "📝 Riga solo descrizione (senza codice articolo)",
+                key=f"prev_desc_only_{i}",
+                help="Per righe come EXTRA SCONTO, CONSEGNA AL PIANO, ecc. Verranno inviate come tp_riga='D'",
+            )
 
-            art_search_col1, art_search_col2 = st.columns([3, 1])
-            with art_search_col1:
-                art_search_text = st.text_input("Cerca articolo", value="", key=f"prev_art_search_{i}",
-                                                placeholder="Cerca per descrizione o codice...")
-            with art_search_col2:
-                st.markdown("<br>", unsafe_allow_html=True)
-                art_search_btn = st.button("🔍 Cerca", key=f"prev_btn_art_{i}")
+            if desc_only:
+                st.caption("Questa riga sarà inviata come riga descrizione (tp_riga='D') senza codice articolo")
+                final_codice_art = None
+            else:
+                # Lookup articolo Mexal
+                _sel_art = st.session_state.get(f"prev_art_sel_{i}")
+                if _sel_art:
+                    st.session_state[f"prev_codart_{i}"] = _sel_art
+                elif f"prev_codart_{i}" not in st.session_state:
+                    st.session_state[f"prev_codart_{i}"] = ""
+                codice_art = st.text_input("Codice articolo Mexal", key=f"prev_codart_{i}",
+                                      placeholder="Cerca sotto o compila manualmente")
 
-            if art_search_btn and art_search_text:
-                with st.spinner("Ricerca..."):
-                    st.session_state[f"prev_art_risultati_{i}"] = mx.search_articoli(art_search_text)
+                if not codice_art:
+                    st.markdown("⚠️ <span style='color:#E34F4F; font-size:0.85rem;'>"
+                                "Codice articolo obbligatorio — usa Cerca per trovarlo, "
+                                "oppure spunta 'Riga solo descrizione'</span>",
+                                unsafe_allow_html=True)
 
-            if st.session_state.get(f"prev_art_risultati_{i}"):
-                art_list = st.session_state[f"prev_art_risultati_{i}"]
-                art_options = [f"{a.get('codice', '?')} — {a.get('descrizione', '?')} ({a.get('um_principale', '')})"
-                               for a in art_list]
-                art_sel_idx = st.selectbox(f"Articoli ({len(art_options)})", range(len(art_options)),
-                                           format_func=lambda idx, opts=art_options: opts[idx],
-                                           key=f"prev_art_select_{i}")
-                if art_sel_idx is not None:
-                    st.session_state[f"prev_art_sel_{i}"] = art_list[art_sel_idx].get("codice", "")
-                    st.success(f"✅ **{art_list[art_sel_idx].get('codice')}**")
+                art_search_col1, art_search_col2 = st.columns([3, 1])
+                with art_search_col1:
+                    art_search_text = st.text_input("Cerca articolo", value="", key=f"prev_art_search_{i}",
+                                                    placeholder="Cerca per descrizione o codice...")
+                with art_search_col2:
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    art_search_btn = st.button("🔍 Cerca", key=f"prev_btn_art_{i}")
 
-            final_codice_art = st.session_state.get(f"prev_art_sel_{i}") or codice_art
+                if art_search_btn and art_search_text:
+                    with st.spinner("Ricerca..."):
+                        st.session_state[f"prev_art_risultati_{i}"] = mx.search_articoli(art_search_text)
+
+                if st.session_state.get(f"prev_art_risultati_{i}"):
+                    art_list = st.session_state[f"prev_art_risultati_{i}"]
+                    art_options = [f"{a.get('codice', '?')} — {a.get('descrizione', '?')} ({a.get('um_principale', '')})"
+                                   for a in art_list]
+                    art_sel_idx = st.selectbox(f"Articoli ({len(art_options)})", range(len(art_options)),
+                                               format_func=lambda idx, opts=art_options: opts[idx],
+                                               key=f"prev_art_select_{i}")
+                    if art_sel_idx is not None:
+                        st.session_state[f"prev_art_sel_{i}"] = art_list[art_sel_idx].get("codice", "")
+                        st.success(f"✅ **{art_list[art_sel_idx].get('codice')}**")
+
+                final_codice_art = st.session_state.get(f"prev_art_sel_{i}") or codice_art
+
             edited_righe.append({
                 "codice_articolo": final_codice_art or None, "descrizione": desc, "quantita": qty,
                 "prezzo": prezzo, "sconto": sconto, "aliquota_iva": iva, "importo": importo,
+                "desc_only": desc_only,
             })
 
     # ===========================================================================
@@ -626,26 +655,58 @@ if st.session_state.prev_data:
     # ===========================================================================
     st.markdown('<div class="step-header">3 — Crea OC in Mexal</div>', unsafe_allow_html=True)
 
+    # --- Riepilogo validazione ---
+    righe_con_codice = [i+1 for i, r in enumerate(edited_righe) if r["codice_articolo"]]
+    righe_desc_only = [i+1 for i, r in enumerate(edited_righe) if r["desc_only"]]
+    righe_senza_codice = [i+1 for i, r in enumerate(edited_righe)
+                          if not r["codice_articolo"] and not r["desc_only"]]
+
+    _ok_cli = "✅" if cod_conto else "❌"
+    _ok_data = "✅" if data_offerta and data_offerta != "?" else "❌"
+    n_art = len(righe_con_codice)
+    n_desc = len(righe_desc_only)
+    n_missing = len(righe_senza_codice)
+    n_total = len(edited_righe)
+    if n_missing == 0:
+        _ok_righe = "✅"
+        _col_righe = "#708E5C"
+    elif n_art > 0:
+        _ok_righe = "⚠️"
+        _col_righe = "#E8A317"
+    else:
+        _ok_righe = "❌"
+        _col_righe = "#E34F4F"
+
+    st.markdown(f"""
+    <div style="background:white; border:1px solid #f0ebe6; border-radius:12px; padding:1rem 1.2rem; margin-bottom:1rem;">
+        <div style="font-family:'Jost',sans-serif; font-size:0.75rem; text-transform:uppercase;
+                    letter-spacing:0.1em; color:#A69D98; margin-bottom:0.5rem;">Riepilogo validazione</div>
+        <div>{_ok_cli} <b>Cliente Mexal:</b> {cod_conto if cod_conto else '<span style="color:#E34F4F">mancante — cerca o crea il cliente</span>'}</div>
+        <div>{_ok_data} <b>Data offerta:</b> {data_offerta if data_offerta and data_offerta != '?' else '<span style="color:#E34F4F">mancante</span>'}</div>
+        <div style="color:{_col_righe}">{_ok_righe} <b>Righe con codice articolo:</b> {n_art}/{n_total}
+            {f' — 📝 {n_desc} righe descrizione' if n_desc else ''}</div>
+        {'<div style="color:#E34F4F">❌ <b>Righe senza codice:</b> ' + ', '.join(f'Riga {r}' for r in righe_senza_codice) + ' — assegna un codice o spunta "Riga solo descrizione"</div>' if righe_senza_codice else ''}
+    </div>
+    """, unsafe_allow_html=True)
+
+    # Validazione
     errors = []
     if not cod_conto:
         errors.append("Codice cliente Mexal mancante")
-    if not data_offerta:
+    if not data_offerta or data_offerta == "?":
         errors.append("Data offerta mancante")
     if not edited_righe:
         errors.append("Nessuna riga")
     for idx, r in enumerate(edited_righe):
-        if r["quantita"] <= 0:
+        if r["quantita"] <= 0 and not r["desc_only"]:
             errors.append(f"Riga {idx+1}: quantità deve essere > 0")
-    if errors:
-        for e in errors:
-            st.warning(f"⚠️ {e}")
 
     with st.expander("👀 Anteprima payload JSON"):
         payload = {
             "sigla": "OC", "serie": 1, "numero": 0,
             "data_documento": data_offerta, "cod_conto": cod_conto,
             "id_riga": [[i+1, i+1] for i in range(len(edited_righe))],
-            "tp_riga": [[i+1, "R"] for i in range(len(edited_righe))],
+            "tp_riga": [[i+1, "D" if r["desc_only"] else "R"] for i, r in enumerate(edited_righe)],
             "quantita": [[i+1, r["quantita"]] for i, r in enumerate(edited_righe)],
             "cod_iva": [[i+1, r["aliquota_iva"] or "22"] for i, r in enumerate(edited_righe)],
         }
@@ -658,9 +719,9 @@ if st.session_state.prev_data:
         sconti = [[i+1, str(r["sconto"])] for i, r in enumerate(edited_righe) if r["sconto"]]
         if sconti:
             payload["sconto"] = sconti
-        # descr_riga per righe senza codice articolo
+        # descr_riga per righe descrizione o senza codice articolo
         descr_righe = [[i+1, r["descrizione"]] for i, r in enumerate(edited_righe)
-                       if not r["codice_articolo"] and r["descrizione"]]
+                       if (r["desc_only"] or not r["codice_articolo"]) and r["descrizione"]]
         if descr_righe:
             payload["descr_riga"] = descr_righe
         st.json(payload)
@@ -670,7 +731,14 @@ if st.session_state.prev_data:
         invia = st.button("🚀 Crea OC in Mexal", type="primary", disabled=bool(errors))
     with col2:
         if errors:
-            st.caption("Correggi gli errori prima di inviare")
+            mancanti = []
+            if not cod_conto:
+                mancanti.append("codice cliente")
+            if not data_offerta or data_offerta == "?":
+                mancanti.append("data offerta")
+            if righe_senza_codice:
+                mancanti.append(f"codice articolo riga {', '.join(str(r) for r in righe_senza_codice)}")
+            st.caption(f"Mancano: {', '.join(mancanti)}" if mancanti else "Correggi gli errori")
 
     if invia:
         with st.spinner("Creazione OC in corso..."):
