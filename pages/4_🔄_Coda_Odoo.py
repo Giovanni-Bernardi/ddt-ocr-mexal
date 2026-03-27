@@ -5,7 +5,8 @@ import re
 import streamlit as st
 from datetime import datetime
 
-from lib.ui_common import inject_css, require_login, render_brand_header, render_sidebar, get_secret
+from lib.ui_common import (inject_css, require_login, render_brand_header, render_sidebar,
+                           get_secret, show_success, show_error, show_api_error)
 from lib.mexal_api import MexalClient
 from lib.odoo_client import OdooClient, extract_provincia, normalize_vat
 
@@ -67,8 +68,9 @@ if sync_btn:
             st.success(f"✅ {len(leads)} lead Won trovati in Odoo CRM")
         except Exception as e:
             import traceback
-            st.error(f"❌ Errore connessione Odoo: {e}")
-            st.code(traceback.format_exc())
+            show_error("Errore connessione Odoo", "Verifica le credenziali ODOO_USERNAME e ODOO_PASSWORD nei Secrets.")
+            with st.expander("Dettaglio tecnico", expanded=False):
+                st.code(traceback.format_exc())
 
 # ===========================================================================
 # Sezione 2: Lista lead da processare
@@ -252,13 +254,7 @@ if st.session_state.odoo_leads:
                         """, unsafe_allow_html=True)
                         st.rerun()
                     else:
-                        st.markdown(f"""
-                        <div class="error-box">
-                            <h3>❌ Errore creazione cliente</h3>
-                            <p>{result.get('errore', '?')}</p>
-                            <pre>{json.dumps(result.get('dettaglio', {}), indent=2, ensure_ascii=False)}</pre>
-                        </div>
-                        """, unsafe_allow_html=True)
+                        show_api_error(result)
 
 # ===========================================================================
 # Sezione 4: Storico clienti creati

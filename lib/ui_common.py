@@ -171,6 +171,36 @@ def inject_css():
     st.markdown(SOFABLE_CSS, unsafe_allow_html=True)
 
 
+def show_success(title: str, details: str = ""):
+    """Box successo professionale."""
+    det = f"<p>{details}</p>" if details else ""
+    st.markdown(f'<div class="success-box"><h3>✅ {title}</h3>{det}</div>', unsafe_allow_html=True)
+
+
+def show_error(title: str, details: str = ""):
+    """Box errore professionale — traduce dettagli tecnici."""
+    det = f"<p>{details}</p>" if details else ""
+    st.markdown(f'<div class="error-box"><h3>❌ {title}</h3>{det}</div>', unsafe_allow_html=True)
+
+
+def show_api_error(result: dict):
+    """Mostra errore API Mexal in modo comprensibile."""
+    errore = result.get("errore", "Errore sconosciuto")
+    dettaglio = result.get("dettaglio", {})
+    # Estrai messaggio leggibile dal dettaglio
+    msg = ""
+    if isinstance(dettaglio, dict):
+        msg = dettaglio.get("message", dettaglio.get("errore", ""))
+        if not msg and "raw" in dettaglio:
+            msg = dettaglio["raw"][:200]
+    if not msg:
+        msg = str(dettaglio)[:200] if dettaglio else ""
+    show_error(f"Errore: {errore}", msg)
+    with st.expander("Dettaglio tecnico", expanded=False):
+        import json
+        st.code(json.dumps(dettaglio, indent=2, ensure_ascii=False), language="json")
+
+
 def require_login():
     """Gate di login. Chiama st.stop() se non autenticato."""
     inject_css()

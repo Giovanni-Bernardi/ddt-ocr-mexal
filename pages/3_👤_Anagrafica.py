@@ -4,7 +4,8 @@ import json
 import re
 import streamlit as st
 
-from lib.ui_common import inject_css, require_login, render_brand_header, render_sidebar
+from lib.ui_common import (inject_css, require_login, render_brand_header, render_sidebar,
+                           show_success, show_error, show_api_error)
 from lib.mexal_api import MexalClient
 
 st.set_page_config(page_title="Anagrafica Clienti", page_icon="👤", layout="wide")
@@ -191,13 +192,7 @@ if submitted:
                     "location": location,
                 }
             else:
-                st.markdown(f"""
-                <div class="error-box">
-                    <h3>❌ Errore creazione cliente</h3>
-                    <p>{result.get('errore', '?')}</p>
-                    <pre>{json.dumps(result.get('dettaglio', {}), indent=2, ensure_ascii=False)}</pre>
-                </div>
-                """, unsafe_allow_html=True)
+                show_api_error(result)
 
 # Bottone annulla ultimo cliente creato
 if st.session_state.get("anag_ultimo_creato"):

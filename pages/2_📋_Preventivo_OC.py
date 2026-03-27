@@ -5,7 +5,8 @@ import re
 import streamlit as st
 from datetime import datetime
 
-from lib.ui_common import inject_css, require_login, render_brand_header, render_sidebar
+from lib.ui_common import (inject_css, require_login, render_brand_header, render_sidebar,
+                           show_success, show_error, show_api_error)
 from lib.mexal_api import MexalClient
 
 st.set_page_config(page_title="Preventivo → OC", page_icon="📋", layout="wide")
@@ -399,7 +400,9 @@ if uploaded and st.button("📄 Estrai dati", type="primary"):
             with st.expander("🔍 Debug: testo raw estratto dal PDF"):
                 st.text(st.session_state.get("prev_raw_text", "N/D"))
         except Exception as e:
-            st.error(f"❌ Errore parsing: {e}")
+            show_error("Errore nell'estrazione dati dal PDF", "Verifica che il PDF sia un preventivo Sofable valido.")
+            with st.expander("Dettaglio tecnico", expanded=False):
+                st.code(str(e))
 
 # ===========================================================================
 # Step 2: Verifica dati
@@ -572,13 +575,7 @@ if st.session_state.prev_data:
                             st.success(f"✅ Cliente creato: **{rag_sociale}** ({codice_assegnato or 'vedi Location'})")
                             st.rerun()
                         else:
-                            st.markdown(f"""
-                            <div class="error-box">
-                                <h3>❌ Errore creazione cliente</h3>
-                                <p>{cli_result.get('errore', '?')}</p>
-                                <pre>{json.dumps(cli_result.get('dettaglio', {}), indent=2, ensure_ascii=False)}</pre>
-                            </div>
-                            """, unsafe_allow_html=True)
+                            show_api_error(cli_result)
 
     # Codice cliente Mexal
     _cli_trovato = st.session_state.get("prev_cliente_trovato")
@@ -726,13 +723,7 @@ if st.session_state.prev_data:
                                         st.success(f"✅ Articolo creato: **{na_codice.strip().upper()}**")
                                         st.rerun()
                                     else:
-                                        st.markdown(f"""
-                                        <div class="error-box">
-                                            <h3>❌ Errore creazione articolo</h3>
-                                            <p>{art_result.get('errore', '?')}</p>
-                                            <pre>{json.dumps(art_result.get('dettaglio', {}), indent=2, ensure_ascii=False)}</pre>
-                                        </div>
-                                        """, unsafe_allow_html=True)
+                                        show_api_error(art_result)
 
                 final_codice_art = st.session_state.get(f"prev_art_sel_{i}") or codice_art
 
@@ -861,13 +852,7 @@ if st.session_state.prev_data:
                     "righe": len(edited_righe), "stato": "✅",
                 })
             else:
-                st.markdown(f"""
-                <div class="error-box">
-                    <h3>❌ Errore creazione OC</h3>
-                    <p>{result.get('errore', '?')}</p>
-                    <pre>{json.dumps(result.get('dettaglio', {}), indent=2, ensure_ascii=False)}</pre>
-                </div>
-                """, unsafe_allow_html=True)
+                show_api_error(result)
 
     # Bottone annulla ultimo OC
     if st.session_state.get("prev_ultimo_oc"):

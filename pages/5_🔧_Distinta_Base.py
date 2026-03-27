@@ -5,7 +5,8 @@ import re
 import streamlit as st
 from datetime import datetime
 
-from lib.ui_common import inject_css, require_login, render_brand_header, render_sidebar
+from lib.ui_common import (inject_css, require_login, render_brand_header, render_sidebar,
+                           show_success, show_error, show_api_error)
 from lib.mexal_api import MexalClient
 
 st.set_page_config(page_title="Distinta Base", page_icon="🔧", layout="wide")
@@ -85,10 +86,7 @@ if st.session_state.get("db_articolo_sel"):
                 st.success(f"✅ Sviluppo completato: {len(componenti)} componenti trovati")
             else:
                 st.session_state.db_risultato = None
-                st.error(f"❌ Errore: {result.get('errore', '?')}")
-                if result.get("dettaglio"):
-                    with st.expander("Dettaglio errore"):
-                        st.json(result["dettaglio"])
+                show_api_error(result)
 
 # ===========================================================================
 # Sezione 3: Visualizzazione componenti per fase
@@ -268,7 +266,7 @@ if st.session_state.db_risultato:
                                     st.success("OF eliminato")
                                     st.rerun()
                                 else:
-                                    st.error(f"❌ {del_r.get('errore', '?')}")
+                                    show_error("Errore eliminazione OF", del_r.get("errore", "?"))
                         continue
 
                     # Tabella materiali
@@ -315,13 +313,7 @@ if st.session_state.db_risultato:
                                 st.success(f"✅ OF {serie}/{numero} creato per {forn_nome}")
                                 st.rerun()
                             else:
-                                st.markdown(f"""
-                                <div class="error-box">
-                                    <h3>❌ Errore creazione OF</h3>
-                                    <p>{result.get('errore', '?')}</p>
-                                    <pre>{json.dumps(result.get('dettaglio', {}), indent=2, ensure_ascii=False)}</pre>
-                                </div>
-                                """, unsafe_allow_html=True)
+                                show_api_error(result)
 
             # Materiali senza fornitore
             if senza_fornitore:

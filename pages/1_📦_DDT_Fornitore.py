@@ -7,7 +7,8 @@ from datetime import datetime
 
 import anthropic
 
-from lib.ui_common import inject_css, require_login, render_brand_header, render_sidebar, get_secret
+from lib.ui_common import (inject_css, require_login, render_brand_header, render_sidebar,
+                           get_secret, show_success, show_error, show_api_error)
 from lib.mexal_api import MexalClient
 from lib.ocr_engine import ocr_ddt
 
@@ -63,12 +64,14 @@ if uploaded and st.button("🔍 Avvia OCR", type="primary"):
             except anthropic.APIStatusError as e:
                 status_area.empty()
                 if e.status_code == 529:
-                    st.error(f"❌ API Claude sovraccarica (529). Riprova tra qualche minuto.")
+                    show_error("API Claude sovraccarica", "Il servizio è temporaneamente sovraccarico. Riprova tra qualche minuto.")
                 else:
-                    st.error(f"❌ Errore API Claude: HTTP {e.status_code}")
+                    show_error("Errore API Claude", f"Codice HTTP {e.status_code}. Verifica la API Key nei Secrets.")
             except Exception as e:
                 status_area.empty()
-                st.error(f"❌ Errore OCR: {e}")
+                show_error("Errore durante l'analisi OCR", "Verifica che il PDF sia valido e riprova.")
+                with st.expander("Dettaglio tecnico", expanded=False):
+                    st.code(str(e))
 
 # ===========================================================================
 # Step 2: Preview e correzione
@@ -302,13 +305,7 @@ if st.session_state.ddt_data:
                     "cod_conto": cod_conto, "data": data_doc, "righe": len(edited_righe), "stato": "✅",
                 })
             else:
-                st.markdown(f"""
-                <div class="error-box">
-                    <h3>❌ Errore creazione BF</h3>
-                    <p>{result.get('errore', '?')}</p>
-                    <pre>{json.dumps(result.get('dettaglio', {}), indent=2, ensure_ascii=False)}</pre>
-                </div>
-                """, unsafe_allow_html=True)
+                show_api_error(result)
 
     st.divider()
     st.download_button("💾 Scarica JSON estratto",
