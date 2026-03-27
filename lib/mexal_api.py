@@ -219,3 +219,36 @@ class MexalClient:
         except Exception:
             err = {"raw": resp.text[:500]}
         return {"errore": f"HTTP {resp.status_code}", "dettaglio": err}
+
+    # -----------------------------------------------------------------------
+    # Servizi (azienda SUT)
+    # -----------------------------------------------------------------------
+    def sviluppo_distinta_base(self, codice_articolo: str, quantita: float = 1,
+                                id_riga_oc: int = 0, data_documento: str = "",
+                                codice_cliente: str = "") -> dict:
+        """Sviluppo distinta base. id_riga_oc=0 = simulazione."""
+        from datetime import datetime
+        if not data_documento:
+            data_documento = datetime.now().strftime("%Y%m%d")
+        payload = {
+            "cmd": "sviluppo_distinta_base",
+            "dati": {
+                "codice_articolo": codice_articolo,
+                "codice_art_padre": "",
+                "codice_cliente": codice_cliente,
+                "data_documento": data_documento,
+                "codice": 0,
+                "cod_sottobolla": 0,
+                "nr_rif_pf": 0,
+                "id_riga_oc": id_riga_oc,
+                "quantita_taglie": [[1, quantita]],
+            },
+        }
+        resp = self._post("/servizi", payload, timeout=30, azienda=AZ_DOCUMENTI)
+        if resp.status_code == 200:
+            return {"successo": True, "dati": resp.json()}
+        try:
+            err = resp.json()
+        except Exception:
+            err = {"raw": resp.text[:500]}
+        return {"errore": f"HTTP {resp.status_code}", "dettaglio": err}

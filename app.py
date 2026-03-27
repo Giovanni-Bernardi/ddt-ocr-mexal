@@ -85,3 +85,18 @@ with col4:
     """, unsafe_allow_html=True)
     if st.button("Apri Coda Odoo", key="nav_odoo", type="primary", use_container_width=True):
         st.switch_page("pages/4_🔄_Coda_Odoo.py")
+
+col5, col6 = st.columns(2)
+
+with col5:
+    st.markdown("""
+    <div style="background:white; border:1px solid #f0ebe6; border-top:3px solid #E8A317;
+                border-radius:12px; padding:1.5rem; height:180px;">
+        <h3 style="margin-top:0;">🔧 Distinta Base</h3>
+        <p style="color:#666; font-size:0.9rem;">
+            Simula lo sviluppo distinta base di un prodotto finito. Visualizza componenti e fasi di lavorazione.
+        </p>
+    </div>
+    """, unsafe_allow_html=True)
+    if st.button("Apri Distinta Base", key="nav_db", type="primary", use_container_width=True):
+        st.switch_page("pages/5_🔧_Distinta_Base.py")
