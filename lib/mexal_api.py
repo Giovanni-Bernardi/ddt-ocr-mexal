@@ -101,6 +101,12 @@ class MexalClient:
             return resp.json().get("dati", [])
         return []
 
+    def get_fornitore(self, codice: str) -> Optional[dict]:
+        resp = self._get(f"/risorse/fornitori/{codice}", azienda=AZ_ANAGRAFICHE)
+        if resp.status_code == 200:
+            return resp.json()
+        return None
+
     # -----------------------------------------------------------------------
     # Clienti (azienda SOF)
     # -----------------------------------------------------------------------
@@ -211,6 +217,28 @@ class MexalClient:
 
     def elimina_bf(self, serie: int, numero: int) -> dict:
         resp = self._delete(f"/risorse/documenti/movimenti-magazzino/BF+{serie}+{numero}",
+                            azienda=AZ_DOCUMENTI)
+        if resp.status_code in (200, 204):
+            return {"successo": True}
+        try:
+            err = resp.json()
+        except Exception:
+            err = {"raw": resp.text[:500]}
+        return {"errore": f"HTTP {resp.status_code}", "dettaglio": err}
+
+    def crea_of(self, payload: dict) -> dict:
+        resp = self._post("/risorse/documenti/ordini-fornitori", payload,
+                          timeout=30, azienda=AZ_DOCUMENTI)
+        if resp.status_code == 201:
+            return {"successo": True, "location": resp.headers.get("Location", "")}
+        try:
+            err = resp.json()
+        except Exception:
+            err = {"raw": resp.text[:500]}
+        return {"errore": f"HTTP {resp.status_code}", "dettaglio": err}
+
+    def elimina_of(self, serie: int, numero: int) -> dict:
+        resp = self._delete(f"/risorse/documenti/ordini-fornitori/OF+{serie}+{numero}",
                             azienda=AZ_DOCUMENTI)
         if resp.status_code in (200, 204):
             return {"successo": True}
