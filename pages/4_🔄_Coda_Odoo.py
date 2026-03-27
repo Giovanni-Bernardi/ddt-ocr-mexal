@@ -66,7 +66,9 @@ if sync_btn:
             st.session_state.odoo_leads = leads
             st.success(f"✅ {len(leads)} lead Won trovati in Odoo CRM")
         except Exception as e:
+            import traceback
             st.error(f"❌ Errore connessione Odoo: {e}")
+            st.code(traceback.format_exc())
 
 # ===========================================================================
 # Sezione 2: Lista lead da processare
