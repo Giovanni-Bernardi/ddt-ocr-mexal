@@ -179,6 +179,16 @@ class MexalClient:
             return resp.json()
         return None
 
+    def crea_articolo(self, payload: dict) -> dict:
+        resp = self._post("/risorse/articoli", payload, timeout=30, azienda=AZ_DOCUMENTI)
+        if resp.status_code == 201:
+            return {"successo": True, "location": resp.headers.get("Location", "")}
+        try:
+            err = resp.json()
+        except Exception:
+            err = {"raw": resp.text[:500]}
+        return {"errore": f"HTTP {resp.status_code}", "dettaglio": err}
+
     # -----------------------------------------------------------------------
     # Documenti (azienda SUT)
     # -----------------------------------------------------------------------

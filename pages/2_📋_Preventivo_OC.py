@@ -20,6 +20,36 @@ for k, v in [("prev_data", None), ("prev_storico", [])]:
     if k not in st.session_state:
         st.session_state[k] = v
 
+def _suggerisci_codice(descrizione: str) -> str:
+    """Genera una proposta di codice articolo dalla descrizione.
+
+    Es: "BOBOLI - Divano (MIDI, 2 posti, Tessuto EXTRA)" → "BOBMIDI2PSTEXT"
+    """
+    if not descrizione:
+        return ""
+    desc = descrizione.upper()
+    # Rimuovi caratteri speciali
+    desc = re.sub(r'[^A-Z0-9\s]', ' ', desc)
+    parole = [p for p in desc.split() if p]
+    if not parole:
+        return ""
+    # Prima parola (modello): primi 3 char
+    codice = parole[0][:3]
+    # Parole successive significative (skip articoli/preposizioni)
+    skip = {"DI", "DEL", "DELLA", "IN", "CON", "PER", "DA", "IL", "LA", "LE", "UN", "UNA", "E", "A"}
+    for p in parole[1:]:
+        if p in skip:
+            continue
+        # Numeri interi: prendi tutto
+        if p.isdigit():
+            codice += p
+        else:
+            codice += p[:3]
+        if len(codice) >= 18:
+            break
+    return codice[:20]
+
+
 render_brand_header("Preventivo &rarr; OC Mexal",
                     "Carica un preventivo Sofable PDF, verifica i dati, crea l'Ordine Cliente in Mexal")
 
@@ -641,6 +671,68 @@ if st.session_state.prev_data:
                     if art_sel_idx is not None:
                         st.session_state[f"prev_art_sel_{i}"] = art_list[art_sel_idx].get("codice", "")
                         st.success(f"✅ **{art_list[art_sel_idx].get('codice')}**")
+
+                # --- Creazione rapida articolo ---
+                if not codice_art and not st.session_state.get(f"prev_art_sel_{i}"):
+                    with st.expander("➕ Crea nuovo articolo in Mexal", expanded=False):
+                        st.caption("L'articolo sarà creato su **Azienda SUT**")
+                        _desc_src = desc or riga.get("descrizione", "")
+                        _codice_suggerito = _suggerisci_codice(_desc_src)
+
+                        na_col1, na_col2 = st.columns(2)
+                        with na_col1:
+                            na_codice = st.text_input("Codice articolo *", value=_codice_suggerito,
+                                                      key=f"prev_na_cod_{i}", max_chars=20,
+                                                      help="Max 20 char, maiuscolo, no spazi")
+                            _desc_upper = _desc_src.upper()
+                            na_desc = st.text_input("Descrizione (max 16 char)", value=_desc_upper[:16],
+                                                    key=f"prev_na_desc_{i}", max_chars=16)
+                            na_desc_agg = st.text_input("Descrizione aggiuntiva",
+                                                        value=_desc_upper[16:] if len(_desc_upper) > 16 else "",
+                                                        key=f"prev_na_descagg_{i}")
+                        with na_col2:
+                            na_iva = st.text_input("Aliquota IVA", value=iva or "22", key=f"prev_na_iva_{i}")
+                            na_um = st.selectbox("Unità di misura",
+                                                 ["NR", "MT", "MQ", "KG", "PZ", "LT"],
+                                                 key=f"prev_na_um_{i}")
+                            na_natura = st.selectbox("Tipo (cod_natura)",
+                                                     ["PF - Prodotto Finito",
+                                                      "MPT - Materia Prima Tessuto",
+                                                      "ACC - Accessorio",
+                                                      "SL - Semilavorato"],
+                                                     key=f"prev_na_natura_{i}")
+
+                        if st.button("📦 Crea articolo in Mexal", type="primary", key=f"prev_na_btn_{i}"):
+                            if not na_codice:
+                                st.error("Codice articolo obbligatorio")
+                            else:
+                                _natura_code = na_natura.split(" - ")[0].strip()
+                                art_payload = {
+                                    "codice": na_codice.strip().upper(),
+                                    "descrizione": na_desc.strip().upper(),
+                                    "alq_iva": na_iva.strip(),
+                                    "um_principale": na_um,
+                                    "cod_natura": _natura_code,
+                                    "cod_ricavo": "801.00011",
+                                    "cod_costo": "702.00051",
+                                }
+                                if na_desc_agg:
+                                    art_payload["descrizione_agg"] = na_desc_agg.strip().upper()
+
+                                with st.spinner("Creazione articolo..."):
+                                    art_result = mx.crea_articolo(art_payload)
+                                    if art_result.get("successo"):
+                                        st.session_state[f"prev_art_sel_{i}"] = na_codice.strip().upper()
+                                        st.success(f"✅ Articolo creato: **{na_codice.strip().upper()}**")
+                                        st.rerun()
+                                    else:
+                                        st.markdown(f"""
+                                        <div class="error-box">
+                                            <h3>❌ Errore creazione articolo</h3>
+                                            <p>{art_result.get('errore', '?')}</p>
+                                            <pre>{json.dumps(art_result.get('dettaglio', {}), indent=2, ensure_ascii=False)}</pre>
+                                        </div>
+                                        """, unsafe_allow_html=True)
 
                 final_codice_art = st.session_state.get(f"prev_art_sel_{i}") or codice_art
 
