@@ -34,7 +34,7 @@ class MexalClient:
         self._dominio = get_secret("MEXAL_DOMINIO", "mantellassi")
         self._anno = get_secret("MEXAL_ANNO", "2026")
 
-    def headers(self, azienda: str | None = None) -> dict:
+    def headers(self, azienda: Optional[str] = None) -> dict:
         """Costruisce gli header Mexal. azienda default = SUT."""
         az = azienda or AZ_DOCUMENTI
         token1 = base64.b64encode(f"{self._webapi_user}:{self._webapi_pwd}".encode()).decode()
@@ -58,18 +58,18 @@ class MexalClient:
         session.mount("http://", adapter)
         return session
 
-    def _get(self, path: str, params: dict | None = None, timeout: int = 15,
-             azienda: str | None = None):
+    def _get(self, path: str, params: Optional[dict] = None, timeout: int = 15,
+             azienda: Optional[str] = None):
         return self._session().get(f"{self.base_url}{path}",
                                    headers=self.headers(azienda), params=params, timeout=timeout)
 
-    def _post(self, path: str, json_data: dict, params: dict | None = None,
-              timeout: int = 15, azienda: str | None = None):
+    def _post(self, path: str, json_data: dict, params: Optional[dict] = None,
+              timeout: int = 15, azienda: Optional[str] = None):
         return self._session().post(f"{self.base_url}{path}",
                                     headers=self.headers(azienda), json=json_data,
                                     params=params, timeout=timeout)
 
-    def _delete(self, path: str, timeout: int = 15, azienda: str | None = None):
+    def _delete(self, path: str, timeout: int = 15, azienda: Optional[str] = None):
         return self._session().delete(f"{self.base_url}{path}",
                                       headers=self.headers(azienda), timeout=timeout)
 

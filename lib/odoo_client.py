@@ -47,7 +47,7 @@ class OdooClient:
             )
         return True
 
-    def _call_kw(self, model: str, method: str, args: list, kwargs: dict | None = None) -> list:
+    def _call_kw(self, model: str, method: str, args: list, kwargs: Optional[dict] = None) -> list:
         """Chiamata generica JSON-RPC call_kw."""
         if not self._session:
             self.authenticate()
@@ -152,7 +152,7 @@ def extract_provincia(state_id) -> str:
     return mapping.get(name_lower, "")
 
 
-def normalize_vat(vat: str | None | bool) -> str:
+def normalize_vat(vat) -> str:
     """Normalizza P.IVA Odoo → formato Mexal (senza prefisso IT)."""
     if not vat or vat is False:
         return ""
