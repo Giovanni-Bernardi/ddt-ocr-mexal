@@ -62,14 +62,35 @@ def render_brand_header(title: str = "Sofable &rarr; Mexal", subtitle: str = "")
 SOFABLE_CSS = """
 <style>
     @import url('https://fonts.googleapis.com/css2?family=Jost:wght@400;500;600;700&family=Rubik:wght@300;400;500&display=swap');
-    html, body, [class*="css"] { font-family: 'Rubik', sans-serif; color: #272727; }
+
+    /* === Emil Kowalski: custom easing curves === */
+    :root {
+        --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+        --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+        --color-charcoal: #272727;
+        --color-coral: #E34F4F;
+        --color-coral-hover: #c93c3c;
+        --color-green: #708E5C;
+        --color-blue: #3C619E;
+        --color-taupe: #A69D98;
+        --color-beige: #f0ebe6;
+        --color-bg: #fafaf8;
+        --radius-sm: 8px;
+        --radius-md: 12px;
+    }
+
+    /* === Globals === */
+    html, body, [class*="css"] { font-family: 'Rubik', sans-serif; color: var(--color-charcoal); }
     h1,h2,h3,h4,h5,h6,.stMarkdown h1,.stMarkdown h2,.stMarkdown h3 {
-        font-family: 'Jost', sans-serif !important; color: #272727 !important; font-weight: 600 !important;
+        font-family: 'Jost', sans-serif !important; color: var(--color-charcoal) !important;
+        font-weight: 600 !important;
     }
     .main > div { max-width: 1400px; margin: 0 auto; }
+
+    /* === Brand header === */
     .brand-header {
         background: linear-gradient(60deg, rgba(60,65,68,1), rgba(23,29,33,1));
-        color: white; padding: 1.8rem 2.2rem; border-radius: 12px; margin-bottom: 1.5rem;
+        color: white; padding: 1.8rem 2.2rem; border-radius: var(--radius-md); margin-bottom: 1.5rem;
         display: flex; flex-direction: column; align-items: center; gap: 0.8rem;
     }
     .brand-logos { display: flex; align-items: center; justify-content: center; gap: 1.5rem; }
@@ -84,84 +105,164 @@ SOFABLE_CSS = """
         font-family: 'Jost', sans-serif !important; font-weight: 600 !important; letter-spacing: 0.03em;
     }
     .brand-header .brand-text p {
-        color: #A69D98; margin: 0.2rem 0 0 0; font-size: 0.85rem;
+        color: var(--color-taupe); margin: 0.2rem 0 0 0; font-size: 0.85rem;
         font-family: 'Rubik', sans-serif; font-weight: 300;
     }
+
+    /* === Step headers — visual hierarchy === */
     .step-header {
         font-family: 'Jost', sans-serif; font-size: 0.8rem; font-weight: 500;
-        letter-spacing: 0.12em; text-transform: uppercase; color: #A69D98;
-        border-bottom: 1px solid #f0ebe6; padding: 0 0 0.5rem 0; margin: 2rem 0 1rem 0;
+        letter-spacing: 0.12em; text-transform: uppercase; color: var(--color-taupe);
+        border-bottom: 1px solid var(--color-beige); padding: 0 0 0.5rem 0; margin: 2.5rem 0 1.2rem 0;
     }
+
+    /* === Metric cards — colored top accent === */
     div[data-testid="stMetric"] {
-        background: white; border: 1px solid #f0ebe6; border-radius: 12px;
+        background: white; border: 1px solid var(--color-beige); border-radius: var(--radius-md);
         padding: 1rem 1.2rem; box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        transition: box-shadow 200ms var(--ease-out);
     }
+    div[data-testid="stMetric"]:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.07); }
     div[data-testid="stMetric"] label {
         font-family: 'Jost', sans-serif !important; font-size: 0.7rem !important;
-        letter-spacing: 0.1em; text-transform: uppercase; color: #A69D98 !important;
+        letter-spacing: 0.1em; text-transform: uppercase; color: var(--color-taupe) !important;
     }
     div[data-testid="stMetric"] [data-testid="stMetricValue"] {
         font-family: 'Jost', sans-serif !important; font-size: 1.5rem !important;
-        font-weight: 600 !important; color: #272727 !important;
+        font-weight: 600 !important; color: var(--color-charcoal) !important;
     }
-    div[data-testid="stMetric"]:nth-of-type(1) { border-top: 3px solid #E34F4F; }
-    div[data-testid="stMetric"]:nth-of-type(2) { border-top: 3px solid #3C619E; }
-    div[data-testid="stMetric"]:nth-of-type(3) { border-top: 3px solid #708E5C; }
-    div[data-testid="stMetric"]:nth-of-type(4) { border-top: 3px solid #A69D98; }
+    div[data-testid="stMetric"]:nth-of-type(1) { border-top: 3px solid var(--color-coral); }
+    div[data-testid="stMetric"]:nth-of-type(2) { border-top: 3px solid var(--color-blue); }
+    div[data-testid="stMetric"]:nth-of-type(3) { border-top: 3px solid var(--color-green); }
+    div[data-testid="stMetric"]:nth-of-type(4) { border-top: 3px solid var(--color-taupe); }
+
+    /* === Feedback boxes === */
     .success-box {
-        padding: 1.25rem; border-radius: 12px; background: #f0f7ec;
-        border: 1px solid #c5ddb7; border-left: 4px solid #708E5C;
+        padding: 1.25rem; border-radius: var(--radius-md); background: #f0f7ec;
+        border: 1px solid #c5ddb7; border-left: 4px solid var(--color-green);
         color: #3d5e2e; margin: 1rem 0;
     }
-    .success-box h3 { color: #708E5C !important; font-size: 1.1rem !important; }
+    .success-box h3 { color: var(--color-green) !important; font-size: 1rem !important; margin: 0 0 0.3rem 0 !important; }
+    .success-box p { margin: 0.2rem 0; font-size: 0.9rem; }
     .error-box {
-        padding: 1.25rem; border-radius: 12px; background: #fdf0ef;
-        border: 1px solid #f0c4c0; border-left: 4px solid #E34F4F;
+        padding: 1.25rem; border-radius: var(--radius-md); background: #fdf0ef;
+        border: 1px solid #f0c4c0; border-left: 4px solid var(--color-coral);
         color: #8b2a27; margin: 1rem 0;
     }
-    .error-box h3 { color: #E34F4F !important; font-size: 1.1rem !important; }
-    section[data-testid="stSidebar"] > div { background: #fafaf8; border-right: 1px solid #f0ebe6; }
+    .error-box h3 { color: var(--color-coral) !important; font-size: 1rem !important; margin: 0 0 0.3rem 0 !important; }
+    .error-box p { margin: 0.2rem 0; font-size: 0.9rem; }
+
+    /* === Sidebar === */
+    section[data-testid="stSidebar"] > div { background: var(--color-bg); border-right: 1px solid var(--color-beige); }
     section[data-testid="stSidebar"] h1,section[data-testid="stSidebar"] h2,
-    section[data-testid="stSidebar"] h3 { font-family: 'Jost', sans-serif !important; color: #272727 !important; }
+    section[data-testid="stSidebar"] h3 { font-family: 'Jost', sans-serif !important; color: var(--color-charcoal) !important; }
+
+    /* === Buttons — Emil: buttons must feel responsive === */
+    /* Strong ease-out for instant feedback, scale on active */
     .stButton > button[kind="primary"],.stButton > button[data-testid="stBaseButton-primary"] {
-        background-color: #E34F4F !important; border: none !important; border-radius: 8px !important;
+        background-color: var(--color-coral) !important; border: none !important;
+        border-radius: var(--radius-sm) !important;
         font-family: 'Rubik', sans-serif !important; font-weight: 500 !important;
-        letter-spacing: 0.02em; transition: background-color 0.2s ease;
+        letter-spacing: 0.02em;
+        transition: background-color 200ms var(--ease-out), transform 160ms var(--ease-out),
+                    box-shadow 200ms var(--ease-out);
     }
     .stButton > button[kind="primary"]:hover,.stButton > button[data-testid="stBaseButton-primary"]:hover {
-        background-color: #c93c3c !important;
+        background-color: var(--color-coral-hover) !important;
+        box-shadow: 0 2px 8px rgba(227,79,79,0.25);
     }
+    .stButton > button[kind="primary"]:active,.stButton > button[data-testid="stBaseButton-primary"]:active {
+        transform: scale(0.97);
+    }
+    /* Disabled state — clear visual difference */
+    .stButton > button:disabled {
+        opacity: 0.45 !important; cursor: not-allowed !important;
+        transform: none !important; box-shadow: none !important;
+    }
+    /* Secondary buttons */
     .stButton > button {
-        border-radius: 8px !important; font-family: 'Rubik', sans-serif !important;
-        border-color: #e0dbd5 !important; color: #272727 !important;
+        border-radius: var(--radius-sm) !important; font-family: 'Rubik', sans-serif !important;
+        border-color: #e0dbd5 !important; color: var(--color-charcoal) !important;
+        transition: border-color 200ms var(--ease-out), color 200ms var(--ease-out),
+                    transform 160ms var(--ease-out);
     }
-    .stButton > button:hover { border-color: #E34F4F !important; color: #E34F4F !important; }
-    .stTextInput > div > div > input,.stNumberInput > div > div > input {
-        border-radius: 8px !important; border-color: #e0dbd5 !important;
+    .stButton > button:hover { border-color: var(--color-coral) !important; color: var(--color-coral) !important; }
+    .stButton > button:active { transform: scale(0.97); }
+
+    /* === Inputs — clear focus state === */
+    .stTextInput > div > div > input,.stNumberInput > div > div > input,
+    .stSelectbox > div > div > div {
+        border-radius: var(--radius-sm) !important; border-color: #e0dbd5 !important;
         font-family: 'Rubik', sans-serif !important;
+        transition: border-color 200ms var(--ease-out), box-shadow 200ms var(--ease-out);
     }
     .stTextInput > div > div > input:focus,.stNumberInput > div > div > input:focus {
-        border-color: #E34F4F !important; box-shadow: 0 0 0 1px #E34F4F !important;
+        border-color: var(--color-coral) !important;
+        box-shadow: 0 0 0 2px rgba(227,79,79,0.15) !important;
     }
+
+    /* === Expanders — clean cards === */
     .streamlit-expanderHeader {
         font-family: 'Rubik', sans-serif !important; font-weight: 500 !important;
-        border-radius: 8px !important; background: #fafaf8 !important; border: 1px solid #f0ebe6 !important;
+        border-radius: var(--radius-sm) !important; background: var(--color-bg) !important;
+        border: 1px solid var(--color-beige) !important;
+        transition: background 200ms var(--ease-out);
     }
+    .streamlit-expanderHeader:hover { background: #f5f0ea !important; }
+
+    /* === DDT preview === */
     .ddt-preview-container {
-        border: 1px solid #e0dbd5; border-radius: 12px; overflow: hidden;
+        border: 1px solid #e0dbd5; border-radius: var(--radius-md); overflow: hidden;
         background: white; box-shadow: 0 1px 4px rgba(0,0,0,0.06);
     }
     .ddt-preview-container img { width: 100%; height: auto; }
+
+    /* === Storico items === */
     .storico-item {
-        background: white; border: 1px solid #f0ebe6; border-radius: 10px;
+        background: white; border: 1px solid var(--color-beige); border-radius: 10px;
         padding: 0.8rem 1.2rem; margin-bottom: 0.5rem;
-        font-family: 'Rubik', sans-serif; font-size: 0.88rem; color: #272727;
-        transition: box-shadow 0.15s ease;
+        font-family: 'Rubik', sans-serif; font-size: 0.88rem; color: var(--color-charcoal);
+        transition: box-shadow 200ms var(--ease-out), transform 200ms var(--ease-out);
     }
-    .storico-item:hover { box-shadow: 0 2px 6px rgba(0,0,0,0.06); }
-    hr { border-color: #f0ebe6 !important; }
-    .stFileUploader > div { border-radius: 12px !important; border-color: #e0dbd5 !important; }
-    .stDownloadButton > button { border-radius: 8px !important; font-family: 'Rubik', sans-serif !important; }
+    .storico-item:hover { box-shadow: 0 2px 8px rgba(0,0,0,0.06); transform: translateY(-1px); }
+
+    /* === Home nav cards === */
+    .nav-card {
+        background: white; border: 1px solid var(--color-beige); border-radius: var(--radius-md);
+        padding: 1.5rem; height: 180px;
+        transition: box-shadow 200ms var(--ease-out), transform 200ms var(--ease-out);
+    }
+    .nav-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); transform: translateY(-2px); }
+    .nav-card h3 { margin-top: 0; font-family: 'Jost', sans-serif; }
+    .nav-card p { color: #666; font-size: 0.9rem; }
+    .nav-card-coral { border-top: 3px solid var(--color-coral); }
+    .nav-card-blue { border-top: 3px solid var(--color-blue); }
+    .nav-card-green { border-top: 3px solid var(--color-green); }
+    .nav-card-taupe { border-top: 3px solid var(--color-taupe); }
+    .nav-card-amber { border-top: 3px solid #E8A317; }
+
+    /* === Validation box === */
+    .validation-box {
+        background: white; border: 1px solid var(--color-beige); border-radius: var(--radius-md);
+        padding: 1rem 1.2rem; margin-bottom: 1rem;
+    }
+    .validation-box .vb-title {
+        font-family: 'Jost', sans-serif; font-size: 0.75rem; text-transform: uppercase;
+        letter-spacing: 0.1em; color: var(--color-taupe); margin-bottom: 0.5rem;
+    }
+
+    /* === Misc === */
+    hr { border-color: var(--color-beige) !important; }
+    .stFileUploader > div { border-radius: var(--radius-md) !important; border-color: #e0dbd5 !important; }
+    .stDownloadButton > button { border-radius: var(--radius-sm) !important; font-family: 'Rubik', sans-serif !important; }
+
+    /* === Reduced motion — Emil: accessibility === */
+    @media (prefers-reduced-motion: reduce) {
+        *, *::before, *::after {
+            transition-duration: 0.01ms !important;
+            animation-duration: 0.01ms !important;
+        }
+    }
 </style>
 """
 
